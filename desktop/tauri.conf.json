@@ -42,9 +42,9 @@
       "_comment": "To enable auto-updates: (1) run build/windows/generate_updater_keys.ps1 (2) paste the printed public key into pubkey below (3) set active=true (4) sign every release bundle with the private key. WITHOUT the private key, no one (including you) can ship an update that clients will accept — keep it offline.",
       "active": false,
       "endpoints": [
-        "https://github.com/BILLBOOK_OWNER/BILLBOOK_REPO/releases/latest/download/latest.json"
+        "https://github.com/MohidAh/Categoty_BILL/releases/latest/download/latest.json"
       ],
-      "pubkey": "REPLACE_WITH_REAL_ED25519_PUBKEY_BEFORE_ENABLING"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg4MEFFM0EzRDA2Q0RBNzYKUldSMjJtelFvK01LaVBIVUtqalB0U0JIMmd6SjRoU3VsZTQrdUYvZEFLam5UbEo5bk5vMU1hR3QK"
     },
     "autostart": {
       "active": true

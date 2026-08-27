@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 # BillBook Tauri Updater Keypair Generator
 # ============================================================================
 # Purpose:
@@ -19,12 +19,12 @@
 #   powershell -ExecutionPolicy Bypass -File build\windows\generate_updater_keys.ps1
 #
 # Output:
-#   desktop\.tauri\updater-private.key       (KEEP SECRET — never commit, never ship)
+#   desktop\.tauri\updater-private.key       (KEEP SECRET - never commit, never ship)
 #   desktop\.tauri\updater-private.key.pub   (Tauri v2 CLI always writes the
 #                                             public key next to the private
 #                                             key with .pub appended)
 #   desktop\.tauri\updater-public.key        (copy of the .pub for convenience
-#                                             — stable documented path)
+#                                             - stable documented path)
 #
 # v8.14.2 FIX: Tauri CLI v2 ignores the legacy -p/--public-key-path flag and
 # always writes the public key to <private-key-path>.pub. The old script
@@ -44,13 +44,13 @@ $privKey    = Join-Path $tauriDir "updater-private.key"
 $privKeyPub = Join-Path $tauriDir "updater-private.key.pub"   # what Tauri v2 actually writes
 $pubKey     = Join-Path $tauriDir "updater-public.key"        # stable documented path (copy)
 
-# ─── Already-have-keys check: accept either public-key layout ───────────────
+# --- Already-have-keys check: accept either public-key layout ---------------
 $havePriv = Test-Path $privKey
 $havePub  = (Test-Path $pubKey) -or (Test-Path $privKeyPub)
 if ($havePriv -and $havePub) {
     Write-Host "Keypair already exists at $tauriDir" -ForegroundColor Yellow
     Write-Host "Delete those files first if you want to regenerate." -ForegroundColor Yellow
-    # Still show the public key — operator may be re-running for the copy-paste
+    # Still show the public key - operator may be re-running for the copy-paste
     $existingPub = if (Test-Path $pubKey) { $pubKey } else { $privKeyPub }
     Write-Host "`n=== PUBLIC KEY (paste into tauri.conf.json updater.pubkey) ===" -ForegroundColor Green
     Get-Content $existingPub
@@ -62,14 +62,14 @@ Write-Host "Generating Ed25519 keypair for Tauri updater..." -ForegroundColor Cy
 Write-Host "  private: $privKey"
 Write-Host "  public:  $privKeyPub  (Tauri v2 writes <private>.pub)"
 
-# ─── Locate the Tauri CLI ───────────────────────────────────────────────────
+# --- Locate the Tauri CLI ---------------------------------------------------
 $tauriCli = Get-Command "cargo-tauri" -ErrorAction SilentlyContinue
 if (-not $tauriCli) {
     $tauriCli = Get-Command "tauri" -ErrorAction SilentlyContinue
 }
 if (-not $tauriCli) {
     # npm-installed CLI lands in the npm global bin dir which may not be on
-    # PATH in this fresh PowerShell session — try resolving it explicitly.
+    # PATH in this fresh PowerShell session - try resolving it explicitly.
     $npmRoot = & npm root -g 2>$null
     if ($LASTEXITCODE -eq 0 -and $npmRoot) {
         $npmBin = Split-Path $npmRoot
@@ -89,8 +89,8 @@ if (-not $tauriCli) {
     exit 1
 }
 
-# ─── Generate: Tauri v2 writes public key as <private>.pub automatically ────
-# v8.14.2 FIX: do NOT pass -p for the public key path — Tauri CLI v2 ignores
+# --- Generate: Tauri v2 writes public key as <private>.pub automatically ----
+# v8.14.2 FIX: do NOT pass -p for the public key path - Tauri CLI v2 ignores
 # it (it's not a public-key-path flag) and always derives .pub from -w.
 Push-Location $desktopDir
 & $tauriCli.Source signer generate -w $privKey --force
@@ -101,7 +101,7 @@ if ($exitCode -ne 0) {
     throw "Tauri signer generate failed (exit $exitCode)"
 }
 
-# ─── Locate the generated public key (both layouts) ─────────────────────────
+# --- Locate the generated public key (both layouts) -------------------------
 $generatedPub = $null
 if (Test-Path $privKeyPub) { $generatedPub = $privKeyPub }
 elseif (Test-Path $pubKey) { $generatedPub = $pubKey }
@@ -116,13 +116,13 @@ if (-not $generatedPub) {
     throw "Public key not found after generation. Look in $tauriDir for a .pub file."
 }
 
-# Keep the stable documented path: copy <private>.pub → updater-public.key
+# Keep the stable documented path: copy <private>.pub -> updater-public.key
 if ($generatedPub -ne $pubKey) {
     Copy-Item $generatedPub $pubKey -Force
     Write-Host "`nCopied public key to stable path: $pubKey" -ForegroundColor DarkGray
 }
 
-# ─── Display the public key — operator copies it into tauri.conf.json ───────
+# --- Display the public key - operator copies it into tauri.conf.json -------
 Write-Host "`n=== PUBLIC KEY (paste into tauri.conf.json updater.pubkey) ===" -ForegroundColor Green
 Get-Content $pubKey
 Write-Host "=== END PUBLIC KEY ===`n" -ForegroundColor Green

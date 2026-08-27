@@ -1,4 +1,4 @@
-# PowerShell-friendly startup script for BillBook Lite
+﻿# PowerShell-friendly startup script for BillBook Lite
 Set-Location -LiteralPath $PSScriptRoot
 
 # Create the virtual environment if it doesn't exist.

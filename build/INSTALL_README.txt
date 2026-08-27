@@ -1,41 +1,41 @@
-BillBook Windows Installer — Read-Me
+BillBook Windows Installer - Read-Me
 =====================================
 
 WHAT'S IN THE INSTALLER
 -----------------------
-The installer (BillBookSetup-v8.15.0.exe) contains:
+The installer (BillBookSetup-vX.Y.Z.exe) contains:
 
-  • billbook.exe            - compiled application binary (PyInstaller --onefile)
+  - billbook.exe            - compiled application launcher
                               No Python source files (.py) are shipped.
-  • _internal\              - runtime DLLs and Python packages (.pyc bytecode)
-                              extracted by PyInstaller at runtime.
-  • data\                   - empty data directory; SQLite DB is created here
-                              on first launch.
-  • start.bat, backup.bat   - operator scripts
-  • INSTALL_GUIDE.md        - documentation
+  - _internal\              - runtime DLLs and Python packages (.pyc bytecode)
+                              used by billbook.exe at runtime.
+  - data\                   - data directory; the SQLite database is created
+                              here automatically on first launch.
+  - Start BillBook.bat      - starts the app and opens the dashboard in your
+                              browser (keep its window open while working)
+  - Backup Now.bat          - triggers an immediate database backup
+  - INSTALL_GUIDE.md,
+    USER_GUIDE.md           - documentation
 
 CODE PROTECTION GUARANTEES
 --------------------------
 1. No Python source code (.py) is shipped. Only compiled bytecode (.pyc)
-   inside the .exe bundle.
-2. The .exe is a single-file PyInstaller bundle — at runtime it extracts
-   to %TEMP%\_MEIxxxx\ (random dir name) and runs from there. The user's
-   machine never has a permanent copy of extracted code on disk.
+   inside the _internal\ folder.
+2. No Python installation is needed - the app carries its own runtime.
 3. Tauri desktop shell (separate installer) wraps the same Python binary
-   inside a native Windows .exe — no Python runtime visible to the user
-   at all (they see just BillBook.exe in their Program Files).
+   inside a native Windows app - no console window at all.
 4. For stronger (commercial-grade) protection, see
-   build/windows/STRONGER_PROTECTION.md — covers PyArmor encryption +
+   build/windows/STRONGER_PROTECTION.md - covers PyArmor encryption +
    license-key binding + Nuitka C compilation.
 
 WHAT THE INSTALLER DOES NOT EXPOSE
 ----------------------------------
-   ❌ No app/*.py source files in C:\Program Files\BillBook\
-   ❌ No .env file (the binary reads env vars from the OS environment,
-       or from %APPDATA%\BillBook\config.json — a file you create post-
+   x  No app/*.py source files in the install folder
+   x  No .env file (the binary reads env vars from the OS environment,
+       or from %APPDATA%\BillBook\config.json - a file you create post-
        install if you want to override APP_PASSWORD).
-   ❌ No git history (.git is not packaged).
-   ❌ No test fixtures (tests/ directory is excluded from the bundle).
+   x  No git history (.git is not packaged).
+   x  No test fixtures (tests/ directory is excluded from the bundle).
 
 OPTIONAL FEATURES (NONE ARE REQUIRED)
 -------------------------------------
@@ -56,14 +56,15 @@ Enable them later from Settings when (and only when) you're ready:
                                     owner phone; no messages are ever
                                     sent without configuration)
    4. DB at-rest encryption        - Settings > Security
-                                    (off until you set BILLBOOK_DB_KEY
-                                    env var or install sqlcipher3-binary;
-                                    falls back to plain SQLite with a
-                                    warning log line — app still runs)
+                                    (SQLCipher-based; currently available
+                                    on Linux servers. Windows installs run
+                                    standard SQLite - the app works
+                                    identically, the DB file is simply
+                                    not encrypted on disk)
    5. NSSM auto-restart service    - Run scripts\windows\install_service.bat
                                     as admin (off until you run this
                                     script; without it, the app runs
-                                    as a normal user process — close
+                                    as a normal user process - close
                                     the window, it stops)
 
 You can run BillBook for years with NONE of these configured. They are
@@ -74,10 +75,10 @@ UPDATES
 Tauri's updater (disabled by default) lets you push signed updates that
 auto-install over HTTPS. To enable, generate a keypair (see
 build/windows/generate_updater_keys.ps1) and set updater.active=true
-in desktop/tauri.conf.json. Updates must be signed with the private key —
+in desktop/tauri.conf.json. Updates must be signed with the private key -
 clients verify with the public key baked into their installer.
 
 SUPPORT
 -------
-   docs:    C:\Program Files\BillBook\USER_GUIDE.md
+   docs:    <install folder>\USER_GUIDE.md
    email:   support@billbook.app

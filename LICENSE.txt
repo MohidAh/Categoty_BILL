@@ -1,6 +1,6 @@
-BillBook Software — End-User License Agreement
+BillBook Software - End-User License Agreement
 
-Copyright (c) 2026 BillBook. All rights reserved.
+Copyright (c) 2025 BillBook. All rights reserved.
 
 By installing and using BillBook, you agree to the following terms:
 
@@ -31,7 +31,7 @@ By installing and using BillBook, you agree to the following terms:
 
 4. DATA OWNERSHIP
    You retain all rights to the data entered into the Software. BillBook does
-   not collect, transmit, or store your data — all data is stored locally on
+   not collect, transmit, or store your data - all data is stored locally on
    your machine in the BillBook installation directory.
 
 5. WARRANTY DISCLAIMER

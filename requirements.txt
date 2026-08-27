@@ -21,6 +21,12 @@ google-auth-oauthlib>=1.2
 google-api-python-client>=2.100
 # - Data at rest encryption (SQLCipher, AES-256-CBC + HMAC-SHA256)
 #   Optional: if not installed, app falls back to plaintext SQLite (with a warning).
-sqlcipher3-binary>=0.5.0; platform_system == "Windows" or platform_system == "Darwin"
+#   v8.15.1 FIX: sqlcipher3-binary publishes ONLY manylinux wheels on PyPI
+#   (zero Windows/macOS wheels across all 13 releases - verified), so the old
+#   marker `platform_system == "Windows" or platform_system == "Darwin"` could
+#   never install and aborted `pip install -r requirements.txt` on Windows.
+#   Linux-only now. Windows builds run with standard SQLite by design
+#   (graceful fallback in app/db.py), and the build script prints a NOTE.
+sqlcipher3-binary>=0.5.0; platform_system == "Linux"
 # - Daily sales digest via Twilio WhatsApp API
 twilio>=8.10

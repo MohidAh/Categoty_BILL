@@ -20,7 +20,7 @@ from .security import (
 )
 
 # PR 8: version constants (read by /api/version)
-APP_VERSION = "8.15.0"
+APP_VERSION = "8.15.1"
 APP_VERSION_NAME = "Branding & Appearance — full design.md system, working theme engine"
 
 # ─── App creation ───

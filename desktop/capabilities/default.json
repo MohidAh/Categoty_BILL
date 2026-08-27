@@ -1,0 +1,10 @@
+{
+  "identifier": "default",
+  "description": "BillBook desktop capabilities. The auto-update check runs Rust-side, so 'updater:default' + 'process:default' are only required for the optional JS API (e.g. a 'Check for updates' button in the UI). They are included so that integration works out of the box.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "updater:default",
+    "process:default"
+  ]
+}

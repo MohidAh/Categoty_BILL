@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/nicehash/tauri/dev/crates/tauri-config-schema/schema.json",
+  "$schema": "https://schema.tauri.app/config/2",
   "productName": "BillBook",
   "version": "8.15.0",
   "identifier": "com.billbook.app",
@@ -28,23 +28,25 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "dmg", "appimage"],
+    "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": ["binaries/billbook_sidecar"]
+    "externalBin": ["binaries/billbook_sidecar"],
+    "createUpdaterArtifacts": true
   },
   "plugins": {
     "updater": {
-      "_comment": "To enable auto-updates: (1) run build/windows/generate_updater_keys.ps1 (2) paste the printed public key into pubkey below (3) set active=true (4) sign every release bundle with the private key. WITHOUT the private key, no one (including you) can ship an update that clients will accept — keep it offline.",
-      "active": false,
       "endpoints": [
         "https://github.com/MohidAh/Categoty_BILL/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg4MEFFM0EzRDA2Q0RBNzYKUldSMjJtelFvK01LaVBIVUtqalB0U0JIMmd6SjRoU3VsZTQrdUYvZEFLam5UbEo5bk5vMU1hR3QK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQzMDg4ODAzQjE3NEM0NzkKUldSNXhIU3hBNGdJUXozYTVJRjViWnNVRUFtamVFbGhnRmQ5SXZKVDhsVXVzQU9Sa2I4aE80ZFAK",
+      "windows": {
+        "installMode": "passive"
+      }
     },
     "autostart": {
       "active": true

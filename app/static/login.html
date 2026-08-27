@@ -1,0 +1,141 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BillBook Login</title>
+<link rel="manifest" href="/static/manifest.json">
+<meta name="theme-color" content="#faf9f5">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles/base.css">
+    <link rel="stylesheet" href="/static/styles/components.css">
+    <link rel="stylesheet" href="/static/styles/layout.css">
+<style>
+/* v8.4: Linear design system — dark-first login page */
+* { box-sizing: border-box; }
+:root { color-scheme: dark; }
+html { background: var(--canvas); }
+body {
+  margin: 0; font-family: var(--font-sans); background: var(--bg);
+  color: var(--text);
+  min-height: 100vh; display: grid; place-items: center; padding: 20px;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color .2s var(--ease), color .2s var(--ease);
+}
+.login-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 40px 32px; width: 100%; max-width: 400px;
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+.login-logo {
+  width: 48px; height: 48px; margin: 0 auto 20px;
+  background: var(--primary);
+  border-radius: 12px; display: flex; align-items: center; justify-content: center;
+}
+.login-logo svg {
+  width: 24px; height: 24px;
+  color: white;
+}
+h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
+.login-sub { color: var(--text-2); font-size: 13px; margin-bottom: 28px; }
+.login-input {
+  width: 100%; padding: 12px 14px; background: var(--bg-input);
+  color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--radius-control);
+  font-family: inherit; font-size: 14px; margin-bottom: 12px;
+  transition: border-color .15s, box-shadow .15s;
+  height: 44px;
+}
+.login-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.login-input::placeholder { color: var(--muted); }
+.login-btn {
+  width: 100%; padding: 12px; background: var(--primary); color: white;
+  border: 1px solid var(--primary); border-radius: var(--radius-pill); font-weight: 600; font-size: 14px;
+  cursor: pointer; font-family: inherit; transition: background .15s, transform .1s;
+  height: 42px;
+}
+.login-btn:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+.login-btn:active { transform: scale(0.98); }
+.login-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.login-err { color: var(--danger-text); font-size: 12px; min-height: 16px; margin-top: 10px; }
+.login-theme-toggle {
+  position: fixed; top: 20px; right: 20px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-control); padding: 8px;
+  cursor: pointer; color: var(--text-2);
+  box-shadow: var(--shadow-card); transition: all .15s var(--ease);
+  z-index: 10;
+  display: flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px;
+}
+.login-theme-toggle:hover { background: var(--hover); border-color: var(--border-strong); }
+.login-theme-toggle svg { width: 18px; height: 18px; }
+.login-footer { margin-top: 24px; font-size: 11px; color: var(--muted); }
+</style></head><body>
+<button class="login-theme-toggle" id="theme-btn" title="Toggle theme"></button>
+<div class="login-card">
+  <div class="login-logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+  </div>
+  <h1>BillBook</h1>
+  <p class="login-sub">Enter your password to continue</p>
+  <form id="f" onsubmit="return submitForm(event)">
+    <input id="p" class="login-input" type="password" placeholder="Password" autofocus>
+    <button type="submit" class="login-btn">Enter</button>
+    <div id="e" class="login-err"></div>
+  </form>
+  <div class="login-footer">BillBook</div>
+</div>
+<script>
+// v8.1 Phase 1: redirect to setup wizard if not initialized
+// v8.4: Linear design system — DARK is the default theme
+(function() {
+  var t = localStorage.getItem('bb-theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+  var sun = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+  var moon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  document.getElementById('theme-btn').innerHTML = t === 'dark' ? sun : moon;
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = t === 'dark' ? '#181715' : '#faf9f5';
+  // Check if setup is needed — redirect to wizard if not initialized
+  fetch('/api/setup/state').then(function(r) { return r.json(); }).then(function(state) {
+    if (!state.initialized) {
+      window.location.href = '/setup-wizard';
+    }
+  }).catch(function() { /* stay on login if check fails */ });
+})();
+document.getElementById('theme-btn').onclick = function() {
+  var cur = document.documentElement.getAttribute('data-theme');
+  var next = cur === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('bb-theme', next);
+  var sun = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+  var moon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  document.getElementById('theme-btn').innerHTML = next === 'dark' ? sun : moon;
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = next === 'dark' ? '#faf9f5' : '#181715';
+};
+async function submitForm(e){
+  e.preventDefault();
+  var btn = document.querySelector('.login-btn');
+  btn.textContent = 'Signing in...'; btn.disabled = true;
+  try {
+    var r = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({password:document.getElementById('p').value})});
+    if(r.ok){
+      var data = await r.json();
+      localStorage.setItem('bb-role', data.role || 'manager');
+      localStorage.setItem('bb-user-name', 'Manager');
+      location='/?#/launcher';
+    } else {
+      document.getElementById('e').textContent='Wrong password';
+      btn.textContent='Enter'; btn.disabled=false;
+      document.getElementById('p').select();
+    }
+  } catch(err) {
+    document.getElementById('e').textContent='Network error';
+    btn.textContent='Enter'; btn.disabled=false;
+  }
+  return false;
+}
+</script></body></html>

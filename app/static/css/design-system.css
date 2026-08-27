@@ -1,0 +1,978 @@
+/* ═══════════════════════════════════════════════════════════════
+   BillBook v8.4 — Linear Design System Implementation
+   Dark-first, minimalist, premium typography (Inter Variable).
+   Strategic accent colors: Pink #F91880, Green #00BA7C, Indigo #5E6AD2.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ─── Theme: Dark "Linear" (DEFAULT — dark-first) ─── */
+:root {
+  /* Surfaces — Linear's sophisticated dark palette */
+  --bg: #08090A;           /* Primary Background — hero, high-impact */
+  --surface: #0F1011;      /* Nested containers, cards */
+  --elevated: #18191A;     /* Strong contrast backgrounds */
+  --hover: rgba(255, 255, 255, 0.05);  /* Interactive hover */
+  --bg-input: rgba(255, 255, 255, 0.02); /* Input field background */
+
+  /* Borders — subtle, refined */
+  --border: rgba(255, 255, 255, 0.05);       /* Standard border */
+  --border-strong: rgba(255, 255, 255, 0.08); /* Hover/focus border */
+  --border-subtle: rgba(255, 255, 255, 0.04); /* Inset, subtle */
+
+  /* Text — Linear's neutral scale */
+  --text: #F7F8F8;         /* Primary Text — Neutral 100 */
+  --text-2: #8A8F98;       /* Secondary Text — Neutral 400 */
+  --muted: #62666D;        /* Muted/labels — Neutral 500 */
+  --text-quaternary: #3E3E44; /* Neutral 600 */
+
+  /* Brand — Interactive Indigo (Linear's primary interactive color) */
+  --primary: #5E6AD2;
+  --primary-hover: #7C8BEE;
+  --primary-soft: rgba(94, 106, 210, 0.12);
+  --primary-text: #9CA8F5;
+  --primary-border: rgba(94, 106, 210, 0.25);
+
+  /* Accent Pink — Linear's signature CTA color */
+  --accent-pink: #F91880;
+  --accent-pink-soft: rgba(249, 24, 128, 0.12);
+
+  /* Accent Green — Semantic success */
+  --accent-green: #00BA7C;
+  --accent-green-soft: rgba(0, 186, 124, 0.12);
+
+  /* Accent Amber — Semantic warning (distinct from danger pink) */
+  --accent-amber: #FFC107;
+  --accent-amber-soft: rgba(255, 193, 7, 0.12);
+
+  /* Text on accent backgrounds — always white for contrast */
+  --text-on-accent: #FFFFFF;
+
+  /* Semantic accents — mapped to Linear's palette */
+  --success: #00BA7C;      /* Accent Green */
+  --success-soft: rgba(0, 186, 124, 0.12);
+  --success-text: #00D69A;
+  --warning: #FFC107;      /* Accent Amber for warnings (distinct from danger) */
+  --warning-soft: rgba(255, 193, 7, 0.12);
+  --warning-text: #FFD451;
+  --danger: #F91880;       /* Accent Pink for danger/errors */
+  --danger-soft: rgba(249, 24, 128, 0.12);
+  --danger-text: #FF4B9B;
+
+  /* Neutral accent */
+  --neutral: #62666D;
+  --neutral-soft: rgba(98, 102, 109, 0.12);
+  --neutral-text: #8A8F98;
+
+  /* Legacy aliases mapped to Linear palette */
+  --secondary: var(--primary);
+  --secondary-soft: var(--primary-soft);
+  --secondary-text: var(--primary-text);
+  --info: #5E6AD2;
+  --info-soft: var(--primary-soft);
+  --info-text: var(--primary-text);
+  --pink: #F91880;
+  --pink-soft: rgba(249, 24, 128, 0.12);
+  --pink-text: #FF4B9B;
+
+  /* Radii — Linear's scale: 0px, 4px, 6px, 8px, 9999px */
+  --radius-control: 6px;   /* Input fields, compact cards */
+  --radius-card: 8px;      /* Medium cards, containers */
+  --radius-modal: 12px;    /* Modals */
+  --radius-pill: 9999px;   /* Pill buttons, badges, avatars */
+  --radius-xs: 4px;        /* Small UI elements */
+  --radius-sm: 6px;        /* Standard form elements */
+  --radius: 8px;           /* Default */
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* Shadows — Linear's restrained system (dark background amplifies depth) */
+  --shadow-card: none;     /* Cards are flat by default */
+  --shadow-hover: 0 4px 4px 0 rgba(0, 0, 0, 0.1);  /* Raised */
+  --shadow-sm: 0 1px 0 0 rgba(0, 0, 0, 0.4);       /* Floating/sticky */
+  --shadow-lg: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 4px 4px 0 rgba(0, 0, 0, 0.1); /* Modal */
+  --shadow-glow: 0 0 0 1px rgba(94, 106, 210, 0.2), 0 4px 4px 0 rgba(94, 106, 210, 0.1);
+
+  /* Spacing — 8px grid (Linear's base unit) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* Typography — Inter Variable (Linear's primary font) */
+  --font-sans: 'Inter', 'Inter Variable', system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'Berkeley Mono', 'JetBrains Mono', ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Layout */
+  --sidebar-w: 240px;
+  --topbar-h: 56px;
+
+  /* Transitions — Linear uses smooth easing */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-fast: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Legacy aliases (for backward compat with old pages/) */
+  --bg-card: var(--surface);
+  --bg-elevated: var(--elevated);
+  --bg-hover: var(--hover);
+  --bg-2: var(--elevated);           /* v8.4: was missing — caused white bgs */
+  --bg-input: rgba(255, 255, 255, 0.02);
+  --accent: var(--primary);
+  --accent-hover: var(--primary-hover);
+  --accent-soft: var(--primary-soft);
+  --accent-text: var(--primary-text);
+  --accent-border: var(--primary-border);
+  --text-secondary: var(--text-2);
+  --text-tertiary: var(--muted);
+  --text-dim: var(--text-2);          /* v8.4: was missing — caused invisible text */
+  --text-strong: var(--text);         /* v8.4: was missing — caused dark text on dark bg */
+  --border: rgba(255, 255, 255, 0.05);
+  --border-strong: rgba(255, 255, 255, 0.08);
+  --border-subtle: rgba(255, 255, 255, 0.04);
+}
+
+/* ─── Theme: Light (optional toggle — Linear's dark is default) ─── */
+[data-theme="light"] {
+  --bg: #FFFFFF;
+  --surface: #FFFFFF;
+  --elevated: #F7F8F8;
+  --hover: rgba(0, 0, 0, 0.03);
+  --bg-input: rgba(0, 0, 0, 0.02);
+
+  --border: rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.12);
+  --border-subtle: rgba(0, 0, 0, 0.04);
+
+  --text: #08090A;
+  --text-2: #62666D;
+  --muted: #8A8F98;
+  --text-quaternary: #D0D6E0;
+
+  --primary: #5E6AD2;
+  --primary-hover: #4B55BF;
+  --primary-soft: rgba(94, 106, 210, 0.08);
+  --primary-text: #3F49A8;
+  --primary-border: rgba(94, 106, 210, 0.18);
+
+  --accent-pink: #F91880;
+  --accent-pink-soft: rgba(249, 24, 128, 0.08);
+  --accent-green: #00BA7C;
+  --accent-green-soft: rgba(0, 186, 124, 0.08);
+  --accent-amber: #FFC107;
+  --accent-amber-soft: rgba(255, 193, 7, 0.08);
+  --text-on-accent: #FFFFFF;
+
+  --success: #00BA7C;
+  --success-soft: rgba(0, 186, 124, 0.08);
+  --success-text: #009261;
+  --warning: #E5A100;
+  --warning-soft: rgba(229, 161, 0, 0.10);
+  --warning-text: #B07A00;
+  --danger: #E5484D;
+  --danger-soft: rgba(229, 72, 77, 0.08);
+  --danger-text: #C9353A;
+
+  --neutral: #62666D;
+  --neutral-soft: rgba(98, 102, 109, 0.08);
+  --neutral-text: #4B5563;
+
+  --secondary: var(--primary);
+  --secondary-soft: var(--primary-soft);
+  --secondary-text: var(--primary-text);
+  --info: var(--primary);
+  --info-soft: var(--primary-soft);
+  --info-text: var(--primary-text);
+  --pink: #F91880;
+  --pink-soft: rgba(249, 24, 128, 0.08);
+  --pink-text: #D40E6C;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-hover: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.12);
+  --shadow-glow: 0 2px 8px rgba(94, 106, 210, 0.12);
+
+  /* v8.4: Legacy aliases for light theme too */
+  --bg-2: var(--elevated);
+  --text-dim: var(--text-2);
+  --text-strong: var(--text);
+}
+
+/* ─── Reset ─── */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; width: 100%; }
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s var(--ease), color 0.2s var(--ease);
+}
+#app { width: 100%; min-height: 100vh; }
+/* #page is the inner content container used in all 3 modes:
+   - Shell mode: <div class="shell-content" id="page"> (gets padding from .shell-content)
+   - Fullscreen launcher mode: <div id="page"> (no padding, manages its own layout)
+   - Kiosk mode: <div id="page" class="kiosk-page"> (no padding)
+   Without flex:1 + width:100%, #page is only as wide as its content because #app is display:flex. */
+#page { flex: 1; width: 100%; min-width: 0; }
+
+/* ─── Typography ─── */
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+h1 { font-size: 22px; font-weight: 700; }
+h2 { font-size: 16px; }
+h3 { font-size: 14px; }
+h4 { font-size: 12px; }
+p { margin: 0 0 var(--space-2); }
+a { color: var(--primary); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--hover);
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  color: var(--text-2);
+}
+
+/* Section labels (uppercase, muted) */
+.section-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+/* ─── Numeric tabular alignment ─── */
+table, .tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+.kpi-value, .stat-value, .table-num, .profit-value {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* ─── Selection ─── */
+::selection { background: var(--primary-soft); color: var(--primary-text); }
+
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--radius-pill);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ─── Focus ─── */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
+/* ═══ COMPONENTS ═══ */
+
+/* ─── Cards — clean surface, subtle border, no heavy shadow ─── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-card);
+  transition: transform 0.15s var(--ease), box-shadow 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.card-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-hover);
+  border-color: var(--border-strong);
+}
+.card h3 { margin-bottom: var(--space-3); }
+.card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-3);
+  gap: var(--space-3);
+}
+.card-title h3 { margin: 0; }
+
+/* ─── Stat Cards ─── */
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 88px;
+  transition: transform 0.15s var(--ease), box-shadow 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.stat-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-hover);
+  border-color: var(--border-strong);
+}
+.stat-card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-control);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.stat-card-icon svg { width: 18px; height: 18px; }
+.stat-card-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.stat-card-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.stat-card-delta {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* Pastel icon chip backgrounds */
+.chip-primary { background: var(--primary-soft); color: var(--primary); }
+.chip-success { background: var(--success-soft); color: var(--success); }
+.chip-warning { background: var(--warning-soft); color: var(--warning); }
+.chip-danger { background: var(--danger-soft); color: var(--danger); }
+.chip-info { background: var(--info-soft); color: var(--info); }
+.chip-pink { background: var(--pink-soft); color: var(--pink); }
+.chip-secondary { background: var(--primary-soft); color: var(--primary); }
+
+/* ─── Buttons (Linear: pill-shaped, 9999px radius) ─── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 14px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill); /* Linear: pill buttons */
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 510;
+  cursor: pointer;
+  transition: all 0.15s var(--ease);
+  white-space: nowrap;
+  text-decoration: none;
+  height: 36px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+.btn:hover { background: rgba(255, 255, 255, 0.08); border-color: var(--border-strong); }
+.btn:active { transform: scale(0.98); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+.btn-primary {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+.btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.btn-secondary:hover { background: rgba(255, 255, 255, 0.08); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-2);
+  border-color: transparent;
+  box-shadow: none;
+}
+.btn-ghost:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
+
+.btn-danger {
+  background: var(--danger);
+  color: white;
+  border-color: var(--danger);
+}
+.btn-danger:hover { background: var(--danger-text); border-color: var(--danger-text); }
+
+.btn-sm { padding: 5px 11px; font-size: 12px; height: 28px; }
+.btn-lg { padding: 10px 20px; font-size: 14px; height: 40px; }
+.btn-icon { padding: 0; aspect-ratio: 1; width: 36px; }
+.btn-icon.btn-sm { width: 28px; }
+.btn-block { width: 100%; }
+.btn-icon svg { width: 14px; height: 14px; }
+
+/* ─── Inputs (Linear: subtle background, refined border, 6px radius) ─── */
+.form-group { margin-bottom: 12px; }
+.form-group:last-child { margin-bottom: 0; }
+.form-label { font-size: 12px; font-weight: 510; color: var(--text-2); margin-bottom: 6px; display: block; }
+.input, .select, .textarea {
+  width: 100%;
+  padding: 0 12px;
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control); /* Linear: 6px for inputs */
+  font-family: inherit;
+  font-size: 13px;
+  transition: all 0.15s var(--ease);
+  height: 36px;
+  line-height: 1.4;
+  box-sizing: border-box;
+}
+.textarea { min-height: 64px; height: auto; resize: vertical; padding: 8px 12px; line-height: 1.5; }
+.input:hover, .select:hover, .textarea:hover { border-color: rgba(255, 255, 255, 0.15); background: rgba(255, 255, 255, 0.04); }
+.input:focus, .select:focus, .textarea:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.2);
+}
+.input::placeholder, .textarea::placeholder { color: var(--muted); opacity: 0.6; }
+
+/* v8.4: Select — dark mode aware, uses lighter chevron on dark bg */
+.select {
+  appearance: none;
+  -webkit-appearance: none;
+  color-scheme: dark;  /* makes native dropdown menu dark in dark mode */
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238A8F98' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 30px;
+  cursor: pointer;
+}
+/* v8.4: Native select elements (not just .select class) also need dark styling */
+select {
+  color-scheme: dark;
+  background-color: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+}
+select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary-border);
+}
+/* v8.4: Style the dropdown options for dark mode */
+select option {
+  background-color: var(--surface);
+  color: var(--text);
+}
+/* Light mode override for selects */
+[data-theme="light"] select,
+[data-theme="light"] .select {
+  color-scheme: light;
+}
+[data-theme="light"] select option {
+  background-color: #fff;
+  color: #08090A;
+}
+
+label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  margin-bottom: 4px;
+}
+
+/* Search input with icon */
+.search-input { position: relative; display: flex; align-items: center; }
+.search-input svg {
+  position: absolute;
+  left: 12px;
+  width: 14px;
+  height: 14px;
+  color: var(--text-quaternary);
+  pointer-events: none;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.search-input .input { padding-left: 34px; }
+
+/* ─── Badges ─── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 10.5px;
+  font-weight: 600;
+  background: var(--hover);
+  color: var(--text-2);
+  border: none;
+}
+.badge-dot::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.badge-success { background: var(--success-soft); color: var(--success-text); }
+.badge-warning { background: var(--warning-soft); color: var(--warning-text); }
+.badge-danger { background: var(--danger-soft); color: var(--danger-text); }
+.badge-accent, .badge-info { background: var(--primary-soft); color: var(--primary-text); }
+.badge-secondary { background: var(--neutral-soft); color: var(--neutral-text); }
+
+/* ─── Tables (Linear: subtle, refined) ─── */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+thead th {
+  background: transparent;
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 510;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text);
+  vertical-align: middle;
+}
+tbody tr { transition: background-color 0.1s ease; }
+tbody tr:hover { background: rgba(255, 255, 255, 0.03); }
+tbody tr:last-child td { border-bottom: none; }
+.table-clickable tbody tr { cursor: pointer; }
+.table-num { text-align: right; }
+
+/* Row hover actions */
+.row-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  justify-content: flex-end;
+}
+tbody tr:hover .row-actions { opacity: 1; }
+.row-actions .btn { padding: 3px; width: 26px; height: 26px; }
+.row-actions .btn svg { width: 12px; height: 12px; }
+
+/* ─── Alerts ─── */
+.alert {
+  padding: 12px 16px;
+  border-radius: var(--radius-control);
+  font-size: 13px;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border: none;
+}
+.alert-icon { flex-shrink: 0; width: 16px; height: 16px; margin-top: 1px; }
+.alert-success { background: var(--success-soft); color: var(--success-text); }
+.alert-warning { background: var(--warning-soft); color: var(--warning-text); }
+.alert-danger { background: var(--danger-soft); color: var(--danger-text); }
+.alert-info { background: var(--primary-soft); color: var(--primary-text); }
+
+/* ─── Text colors ─── */
+.text-success { color: var(--success-text); }
+.text-warning { color: var(--warning-text); }
+.text-danger { color: var(--danger-text); }
+.text-primary { color: var(--primary-text); }
+.text-secondary { color: var(--neutral-text); }
+.text-info { color: var(--info-text); }
+.text-dim { color: var(--muted); }
+.text-dimmer { color: var(--text-quaternary); }
+.font-bold { font-weight: 700; }
+.font-semibold { font-weight: 600; }
+.font-medium { font-weight: 500; }
+.font-mono { font-family: var(--font-mono); }
+
+/* ─── Grid helpers (responsive) ─── */
+.grid { display: grid; gap: var(--space-3); }
+.grid-2 { grid-template-columns: repeat(2, 1fr); }
+.grid-3 { grid-template-columns: repeat(3, 1fr); }
+.grid-4 { grid-template-columns: repeat(4, 1fr); }
+.gap-2 { gap: var(--space-2); }
+.gap-3 { gap: var(--space-3); }
+.flex { display: flex; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.justify-center { justify-content: center; }
+.flex-wrap { flex-wrap: wrap; }
+.flex-1 { flex: 1; }
+.mt-2 { margin-top: var(--space-2); }
+.mt-3 { margin-top: var(--space-3); }
+.mt-4 { margin-top: var(--space-4); }
+.mt-6 { margin-top: var(--space-6); }
+.mb-2 { margin-bottom: var(--space-2); }
+.mb-4 { margin-bottom: var(--space-5); }
+.text-sm { font-size: 12px; }
+.text-xs { font-size: 11px; }
+.text-lg { font-size: 16px; }
+
+/* Responsive grid breakpoints */
+@media (max-width: 1024px) {
+  .grid-4 { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 768px) {
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+  .grid-2 { grid-template-columns: 1fr; }
+}
+
+/* ─── Empty state ─── */
+.empty-state {
+  text-align: center;
+  padding: var(--space-8) var(--space-4);
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+.empty-state-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto var(--space-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--hover);
+  border-radius: var(--radius-card);
+  color: var(--text-quaternary);
+  border: 1px solid var(--border);
+}
+.empty-state-icon svg { width: 24px; height: 24px; }
+.empty-state h3 {
+  color: var(--text);
+  margin: 0 0 var(--space-1);
+  font-size: 15px;
+  font-weight: 600;
+}
+.empty-state p {
+  color: var(--muted);
+  margin: 0 0 var(--space-4);
+  font-size: 13px;
+  max-width: 360px;
+}
+
+/* ─── Skeleton ─── */
+.skeleton {
+  background: linear-gradient(90deg, var(--surface) 25%, var(--hover) 50%, var(--surface) 75%);
+  background-size: 1000px 100%;
+  animation: shimmer 1.5s infinite linear;
+  border-radius: var(--radius-xs);
+}
+@keyframes shimmer {
+  0% { background-position: -1000px 0; }
+  100% { background-position: 1000px 0; }
+}
+
+/* ─── Animations ─── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ─── Filter bar ─── */
+.filter-bar {
+  display: flex;
+  gap: var(--space-2);
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+.filter-search {
+  flex: 1 1 280px;
+  max-width: 440px;
+  min-width: 200px;
+}
+.filter-select {
+  flex: 0 0 auto;
+  width: auto !important;
+  min-width: 120px;
+}
+@media (max-width: 640px) {
+  .filter-bar { flex-direction: column; align-items: stretch; }
+  .filter-search { max-width: none; }
+  .filter-select { width: 100% !important; }
+}
+
+/* ─── KPI (legacy compat) ─── */
+.kpi {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 88px;
+  transition: transform 0.15s var(--ease), box-shadow 0.15s var(--ease), border-color 0.15s var(--ease);
+}
+.kpi:hover { transform: translateY(-1px); box-shadow: var(--shadow-hover); border-color: var(--border-strong); }
+.kpi-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.kpi-label svg { width: 13px; height: 13px; opacity: 0.7; }
+.kpi-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+.kpi-sub { font-size: 12px; color: var(--muted); }
+.kpi-accent .kpi-value { color: var(--primary-text); }
+.kpi-success .kpi-value { color: var(--success-text); }
+.kpi-danger .kpi-value { color: var(--danger-text); }
+.kpi-warning .kpi-value { color: var(--warning-text); }
+.kpi-sparkline {
+  position: absolute;
+  bottom: 12px;
+  right: 16px;
+  opacity: 0.55;
+  pointer-events: none;
+}
+.kpi-sparkline svg { display: block; }
+
+/* ─── Modal (Linear: dark surface, refined shadow) ─── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.15s ease;
+  padding: 0;
+}
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-modal);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 4px 4px 0 rgba(0, 0, 0, 0.1);
+  max-width: 760px;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  animation: fadeIn 0.2s var(--ease);
+}
+@media (max-width: 768px) {
+  .modal-overlay { padding: var(--space-2); }
+  .modal { max-width: 100%; max-height: 94vh; }
+}
+.modal-header {
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.modal-header h2 { font-size: 15px; font-weight: 700; }
+.modal-subtitle { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.modal-x {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  transition: all 0.15s ease;
+  display: flex;
+}
+.modal-x:hover { background: var(--hover); color: var(--text); }
+.modal-x svg { width: 18px; height: 18px; }
+.modal-body {
+  padding: 16px 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+.modal-body .form-group { margin-bottom: 12px; }
+.modal-body .form-group:last-child { margin-bottom: 0; }
+.modal-actions {
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.modal-actions .btn { min-width: 80px; }
+
+/* ─── Loading overlay ─── */
+.loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  gap: 12px;
+}
+.loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+.loading-overlay p { color: white; font-size: 13px; margin: 0; }
+
+/* ─── Toast ─── */
+#toast-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-hover);
+  font-size: 13px;
+  color: var(--text);
+  max-width: 360px;
+  animation: slideInRight 0.2s var(--ease);
+}
+.toast-icon { flex-shrink: 0; display: flex; }
+.toast-msg { flex: 1; }
+.toast-action {
+  background: var(--primary-soft);
+  color: var(--primary-text);
+  border: none;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.toast-success { border-left: 3px solid var(--success); }
+.toast-error { border-left: 3px solid var(--danger); }
+
+/* ─── v8.2.4: FAB spacing fix ─── */
+/* v8.2.5: Increased gap from 12px to 28px — reviewers flagged overlap on every page. */
+#bb-expense-fab {
+  bottom: 96px !important;
+  right: 24px !important;
+}
+.bb-help-fab {
+  bottom: 24px !important;
+  right: 24px !important;
+}
+
+/* ─── v8.4: Help modal height — viewport-based, same as agent chat ─── */
+.bb-help-modal-overlay {
+  max-height: calc(100dvh - 18rem) !important;
+  height: calc(100dvh - 18rem) !important;
+}
+.bb-help-modal-body {
+  min-height: calc(100dvh - 22rem) !important;
+  max-height: calc(100dvh - 22rem) !important;
+  flex: 1 !important;
+}
+
+/* ─── v8.2.4: Sidebar active state ─── */
+.shell-sidebar-nav a.active {
+  background: var(--primary-soft) !important;
+  border-left: 3px solid var(--primary) !important;
+  font-weight: 600;
+}
+
+/* ─── v8.4: Agent chat height — use viewport-based height, no !important ───
+   The chat fills the viewport minus 18rem (for page header + topbar + padding).
+   Both min-height and max-height set to the same value so the chat is exactly
+   that tall — no more, no less. The inline style on the element sets the same
+   value; this rule ensures it's enforced even if inline styles are stripped. */
+#agent-chat {
+  min-height: calc(100dvh - 18rem) !important;
+  max-height: calc(100dvh - 18rem) !important;
+  height: calc(100dvh - 18rem) !important;
+}
+
+/* ─── v8.2.4: Dashboard card text ─── */
+.app-card-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* ─── v8.2.4: Hide FABs when modal open ─── */
+body:has(.modal-overlay) #bb-expense-fab,
+body:has(.modal-overlay) .bb-help-fab {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+/* ─── v8.2.4: Form label contrast ─── */
+.modal-body .form-label,
+.modal-body label.text-sm strong {
+  color: var(--text) !important;
+  font-weight: 600;
+}
+.toast-info { border-left: 3px solid var(--primary); }

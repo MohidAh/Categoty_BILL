@@ -1,0 +1,74 @@
+{
+  "name": "BillBook",
+  "short_name": "BillBook",
+  "description": "POS + business management for wholesale discount shops",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F5F7FB",
+  "theme_color": "#6366f1",
+  "categories": ["business", "productivity", "finance"],
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%236366f1'/><text x='50' y='68' font-size='52' font-weight='700' text-anchor='middle' fill='white' font-family='sans-serif'>B</text></svg>",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "New Sale (POS)",
+      "short_name": "POS",
+      "description": "Open the point-of-sale screen",
+      "url": "/#/pos",
+      "icons": [
+        {
+          "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%236366f1'/><text x='50' y='68' font-size='40' text-anchor='middle' fill='white' font-family='sans-serif'>P</text></svg>",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "All Bills",
+      "short_name": "Bills",
+      "description": "View and manage supplier bills",
+      "url": "/#/bills",
+      "icons": [
+        {
+          "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%2310b981'/><text x='50' y='68' font-size='40' text-anchor='middle' fill='white' font-family='sans-serif'>B</text></svg>",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "Reports",
+      "short_name": "Reports",
+      "description": "Financial reports and analytics",
+      "url": "/#/reports",
+      "icons": [
+        {
+          "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%2364748b'/><text x='50' y='68' font-size='40' text-anchor='middle' fill='white' font-family='sans-serif'>R</text></svg>",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "AI Assistant",
+      "short_name": "AI",
+      "description": "Ask the AI business assistant",
+      "url": "/#/insights",
+      "icons": [
+        {
+          "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23ec4899'/><text x='50' y='68' font-size='40' text-anchor='middle' fill='white' font-family='sans-serif'>A</text></svg>",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    }
+  ]
+}

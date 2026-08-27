@@ -1,0 +1,58 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Environment + secrets (NEVER commit)
+.env
+*.key
+*.pem
+*.crt
+
+# Database + runtime data (NEVER commit — contains real customer PII)
+# v8.14.2: blanket-ignore the whole data/ dir. The old granular list
+# (data/billbook.db, data/backups/, ...) missed anything new the app
+# created at runtime — e.g. data/billbook.db-journal, data/gdrive/,
+# stray temp files — which then showed up as untracked and risked being
+# committed. Nothing under data/ ever belongs in git.
+data/
+# (If a placeholder is ever needed so the dir exists in a fresh clone,
+#  commit data/.gitkeep and add an exception: !data/.gitkeep)
+
+# Test fixtures with real data (NEVER commit — contains real Pakistani business PII)
+pos_backup_example/
+Versions/
+DOC/
+# Build artifacts
+# NOTE: build/*.spec, build/*.iss, build/build_windows.* and build/windows/*
+# ARE committed — they're the installer definition, not artifacts.
+# Only build outputs are ignored:
+build/dist/
+build/__pycache__/
+build/build.log
+build/inno.log
+build/tauri.log
+build/nuitka/
+dist/
+*.egg-info/
+
+# Tauri updater keys (KEEP SECRET — never commit, never ship)
+desktop/.tauri/
+desktop/src-tauri/target/
+*.tauri-private.key
+
+# Installer outputs (these are the .exe files you give to clients)
+installer/*.exe
+installer/*.msi
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

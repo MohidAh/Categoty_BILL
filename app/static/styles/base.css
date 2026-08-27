@@ -1,0 +1,364 @@
+/* BillBook v8.9 — Anthropic/Claude Design System
+   Cream canvas + coral primary + dark navy product surfaces.
+   Serif display (Cormorant Garamond) + Inter body + JetBrains Mono code.
+   Warm, editorial, literary — not a cool-gray SaaS template. */
+
+
+
+:root {
+  /* ── Brand & Accent ────────────────────────────────────────────── */
+  --coral: #cc785c;
+  --coral-active: #a9583e;
+  --coral-disabled: #e6dfd8;
+  --coral-soft: rgba(204, 120, 92, 0.12);
+  --coral-text: #cc785c;
+
+  --accent: var(--coral);
+  --accent-hover: var(--coral-active);
+  --accent-soft: var(--coral-soft);
+  --accent-text: var(--coral-text);
+  --accent-border: rgba(204, 120, 92, 0.25);
+
+  --accent-teal: #5db8a6;
+  --accent-amber: #e8a55a;
+
+  /* ── Surfaces ───────────────────────────────────────────────────── */
+  --canvas: #faf9f5;          /* default page floor — warm cream */
+  --surface-soft: #f5f0e8;    /* section dividers, soft bands */
+  --surface-card: #efe9de;    /* feature/content cards */
+  --surface-cream-strong: #e8e0d2; /* emphasized section bands */
+  --surface-dark: #181715;    /* dark navy product surfaces */
+  --surface-dark-elevated: #252320;
+  --surface-dark-soft: #1f1e1b;
+  --hairline: #e6dfd8;        /* 1px border on cream surfaces */
+  --hairline-soft: #ebe6df;   /* barely-visible divider */
+
+  /* ── Backward-compat aliases (so existing CSS keeps working) ── */
+  --bg: var(--canvas);
+  --bg-elevated: var(--surface-card);
+  --bg-card: var(--surface-card);
+  --bg-hover: rgba(20, 20, 19, 0.04);
+  --bg-input: var(--canvas);
+  --border: var(--hairline);
+  --border-strong: var(--surface-cream-strong);
+  --border-subtle: var(--hairline-soft);
+
+  /* ── Text ──────────────────────────────────────────────────────── */
+  --ink: #141413;             /* headlines + primary text */
+  --body-strong: #252523;     /* emphasized paragraphs */
+  --body: #3d3d3a;            /* default running text */
+  --muted: #6c6a64;           /* sub-headings, breadcrumbs */
+  --muted-soft: #7a7770;      /* captions, fine-print */
+  --on-primary: #ffffff;       /* text on coral */
+  --on-dark: #faf9f5;          /* cream-tinted white on dark */
+  --on-dark-soft: #a09d96;     /* footer body text */
+
+  --text: var(--ink);
+  --text-secondary: var(--muted);
+  --text-tertiary: var(--muted-soft);
+  --text-quaternary: var(--muted-soft);
+  --text-on-accent: var(--on-primary);
+
+  /* ── Semantic ──────────────────────────────────────────────────── */
+  --success: #5db872;
+  --success-soft: rgba(93, 184, 114, 0.12);
+  --success-text: #3d8a52;
+  --warning: #d4a017;
+  --warning-soft: rgba(212, 160, 23, 0.12);
+  --warning-text: #a07a10;
+  --danger: #c64545;
+  --danger-soft: rgba(198, 69, 69, 0.12);
+  --danger-text: #a03535;
+
+  /* ── Radii ─────────────────────────────────────────────────────── */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 9999px;
+
+  /* ── Shadows ───────────────────────────────────────────────────── */
+  --shadow-sm: 0 1px 3px rgba(20, 20, 19, 0.08);
+  --shadow: 0 1px 3px rgba(20, 20, 19, 0.08);
+  --shadow-lg: 0 8px 24px rgba(20, 20, 19, 0.12);
+
+  /* ── Spacing ───────────────────────────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-section: 96px;
+
+  /* ── Typography ─────────────────────────────────────────────────── */
+  --font-serif: 'Cormorant Garamond', 'Tiempos Headline', Garamond, 'Times New Roman', serif;
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --sidebar-w: 240px;
+  --topbar-h: 56px;
+
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+
+/* ════════════════════════════════════════════════════════════════════════════════
+   v8.9.1 — Backward-compat aliases (maps old Linear variable names → new tokens)
+   This lets existing CSS/JS that references --primary, --text-2, --surface, etc.
+   automatically resolve to the new cream/coral/dark-navy palette WITHOUT requiring
+   every file to be rewritten. The old design-system.css can remain loaded — these
+   aliases override its values because they come later in the cascade.
+   ════════════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* Old → New color aliases */
+  --primary: var(--coral);
+  --primary-hover: var(--coral-active);
+  --primary-soft: var(--coral-soft);
+  --primary-text: var(--coral-text);
+  --primary-border: var(--accent-border);
+  --text-2: var(--muted);
+  --text-dim: var(--muted);
+  --text-strong: var(--ink);
+  --surface: var(--surface-card);
+  --hover: var(--bg-hover);
+  --bg-2: var(--surface-soft);
+  --shadow-glow: none;
+  --shadow-card: var(--shadow-sm);
+  --info-text: var(--coral-text);
+  --info-soft: var(--coral-soft);
+  --danger-bg: var(--danger-soft);
+
+  /* Old radius aliases */
+  --radius-card: var(--radius-lg);
+  --radius-control: var(--radius-md);
+  --radius-modal: var(--radius-lg);
+
+  /* Old accent aliases */
+  --accent-pink: var(--coral);
+  --accent-green: var(--success);
+  --accent-amber: var(--warning);
+}
+
+/* ── Dark theme variant (POS + settings dark mode) ──────────────── */
+[data-theme="dark"] {
+  --canvas: #181715;
+  --surface-soft: #1f1e1b;
+  --surface-card: #252320;
+  --surface-cream-strong: #2a2825;
+  --surface-dark: #0f0e0d;
+  --surface-dark-elevated: #252320;
+  --surface-dark-soft: #1f1e1b;
+  --hairline: rgba(250, 249, 245, 0.08);
+  --hairline-soft: rgba(250, 249, 245, 0.04);
+
+  --ink: #faf9f5;
+  --body-strong: #e8e0d2;
+  --body: #d4cfc4;
+  --muted: #a09d96;
+  --muted-soft: #6c6a64;
+  --on-dark: #faf9f5;
+  --on-dark-soft: #a09d96;
+
+  --bg: var(--canvas);
+  --bg-elevated: var(--surface-card);
+  --bg-card: var(--surface-card);
+  --bg-hover: rgba(250, 249, 245, 0.04);
+  --bg-input: var(--surface-dark-soft);
+  --border: var(--hairline);
+  --border-strong: var(--surface-cream-strong);
+  --border-subtle: var(--hairline-soft);
+
+  --text: var(--ink);
+  --text-secondary: var(--muted);
+  --text-tertiary: var(--muted-soft);
+  --text-quaternary: var(--muted-soft);
+
+  --coral-soft: rgba(204, 120, 92, 0.15);
+  --success-soft: rgba(93, 184, 114, 0.15);
+  --warning-soft: rgba(212, 160, 23, 0.15);
+  --danger-soft: rgba(198, 69, 69, 0.15);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Reset ────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; width: 100%; margin: 0; }
+body {
+  font-family: var(--font-sans);
+  background: var(--canvas);
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv11", "ss01";
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+/* ── Typography ───────────────────────────────────────────────────── */
+/* Per design spec: display headlines (h1, h2) use serif (Cormorant Garamond).
+   Sub-heads + UI labels (h3, h4, h5, h6) use sans (Inter).
+   Numbers/data values use Inter with tabular-nums. */
+h1, h2, h3, h4, h5, h6 {
+  margin: 0;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  line-height: 1.2;
+}
+h1 {
+  font-family: var(--font-serif);
+  font-size: 32px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+h2 {
+  font-family: var(--font-serif);
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+h3 {
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+h4 {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 600;
+}
+h5, h6 {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+}
+p { margin: 0 0 var(--space-2); }
+a {
+  color: var(--accent-text);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+a:hover { text-decoration: underline; color: var(--coral-active); }
+
+code, pre {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  background: var(--surface-dark-soft);
+  color: var(--on-dark);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+}
+pre {
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  overflow-x: auto;
+  line-height: 1.6;
+}
+
+/* ── Numeric tabular alignment ────────────────────────────────────── */
+table, .tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+.kpi-value, .stat-value, .table-num, #grand-total, .profit-value {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* ── Selection ───────────────────────────────────────────────────── */
+::selection {
+  background: var(--coral-soft);
+  color: var(--coral-text);
+}
+
+/* ── Scrollbar ────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+  border: 2px solid var(--canvas);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--muted-soft); }
+
+/* ── Focus ────────────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--coral);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Animations ───────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes shimmer {
+  0% { background-position: -1000px 0; }
+  100% { background-position: 1000px 0; }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ── Utility classes ──────────────────────────────────────────────── */
+.font-serif { font-family: var(--font-serif); }
+.font-sans { font-family: var(--font-sans); }
+.font-mono { font-family: var(--font-mono); }
+.text-coral { color: var(--coral); }
+.text-success { color: var(--success); }
+.text-warning { color: var(--warning-text); }
+.text-danger { color: var(--danger-text); }
+.text-muted { color: var(--muted); }
+.text-soft { color: var(--muted-soft); }
+.bg-coral { background: var(--coral); color: var(--on-primary); }
+.bg-dark { background: var(--surface-dark); color: var(--on-dark); }
+.bg-card { background: var(--surface-card); }
+
+/* ════════════════════════════════════════════════════════════════════════════════
+   v8.15.0 — Appearance settings hooks (design.md)
+   The theme engine (utils.js applyAppearance + index.html pre-paint boot) sets
+   data-density / data-serif / data-radius on <html>. These rules make those
+   choices visible. Before v8.15.0 the Density and Font Scale settings were
+   saved but never applied anywhere — dead controls.
+   ════════════════════════════════════════════════════════════════════════════════ */
+
+/* Density: compact tightens the spacing-heavy chrome only — tables stay readable */
+[data-density="compact"] { --space-4: 12px; --space-6: 20px; --space-8: 28px; }
+[data-density="compact"] .card { padding: 14px; }
+[data-density="compact"] .pos-page-header { padding: 10px 0 12px; margin-bottom: 12px; }
+[data-density="compact"] .kpi { padding: 10px 12px; }
+[data-density="compact"] .table-wrap table td,
+[data-density="compact"] .table-wrap table th { padding-top: 7px; padding-bottom: 7px; }
+[data-density="compact"] .modal-body { padding: 14px; }
+[data-density="compact"] .btn { padding-top: 7px; padding-bottom: 7px; }
+
+/* Serif display: design.md default is ON (Cormorant Garamond h1/h2).
+   data-serif="off" switches ALL display headings to the sans voice. */
+[data-serif="off"] h1,
+[data-serif="off"] h2,
+[data-serif="off"] .font-serif-display {
+  font-family: var(--font-sans);
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+[data-serif="off"] .font-serif { font-family: var(--font-sans); }

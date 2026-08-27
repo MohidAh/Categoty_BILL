@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BillBook</title>
+<link rel="manifest" href="/static/manifest.json?v=v47">
+<meta name="theme-color" content="#faf9f5">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BillBook">
+<meta name="description" content="POS + business management for wholesale discount shops">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/static/icons/icon-512.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/design-system.css?v=v47">
+<link rel="stylesheet" href="/static/css/launcher.css?v=v47">
+<link rel="stylesheet" href="/static/css/shell.css?v=v47">
+<link rel="stylesheet" href="/static/styles/base.css?v=v47">
+<link rel="stylesheet" href="/static/styles/components.css?v=v47">
+<link rel="stylesheet" href="/static/styles/layout.css?v=v47">
+<link rel="stylesheet" href="/static/styles/pages.css?v=v47">
+<link rel="stylesheet" href="/static/css/print.css?v=v47">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+// IMMEDIATE appearance application — runs BEFORE any CSS/modules load to prevent FOUC.
+// v8.15.0 (design.md): applies the FULL cached appearance (theme + accent +
+// density + serif + radius + font scale) from localStorage 'bb-appearance'.
+// Default = design.md brand defaults: cream canvas (light) + coral #cc785c.
+// The server copy is re-synced by initAppearance() in utils.js after boot.
+(function() {
+  var D = { theme: 'light', accent_color: '#cc785c', density: 'comfortable', font_scale: '100', serif_headings: true, radius: 'standard' };
+  var c = D;
+  try { var raw = JSON.parse(localStorage.getItem('bb-appearance') || 'null'); if (raw) c = Object.assign({}, D, raw); } catch (e) {}
+  // normalize
+  if (c.theme !== 'dark') c.theme = 'light';
+  if (!/^#[0-9a-fA-F]{6}$/.test(c.accent_color || '')) c.accent_color = D.accent_color;
+  if (c.density !== 'compact') c.density = 'comfortable';
+  var fs = parseInt(c.font_scale, 10); if (isNaN(fs) || fs < 90 || fs > 120) fs = 100;
+  var serif = (c.serif_headings === true || c.serif_headings === '1' || c.serif_headings === 1);
+  var RAD = { compact: ['4px','6px','8px','10px','12px'], standard: ['6px','8px','10px','12px','16px'], roomy: ['8px','10px','12px','16px','20px'] };
+  var r = RAD[c.radius] || RAD.standard;
+
+  var root = document.documentElement;
+  root.setAttribute('data-theme', c.theme);
+  root.setAttribute('data-density', c.density);
+  root.setAttribute('data-serif', serif ? 'on' : 'off');
+  root.setAttribute('data-radius', c.radius);
+  root.style.zoom = String(fs / 100);
+  // keep legacy key in sync for any code still reading it
+  try { localStorage.setItem('bb-theme', c.theme); } catch (e) {}
+
+  // accent + radius CSS custom properties (must match utils.js applyAppearance)
+  function rgb(h) { var n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+  function shade(h, p) { var a = rgb(h).map(function(x){ return Math.max(0, Math.min(255, Math.round(p < 0 ? x * (1 + p) : x + (255 - x) * p))); }); return '#' + a.map(function(x){ return x.toString(16).padStart(2,'0'); }).join(''); }
+  function alpha(h, al) { var a = rgb(h); return 'rgba(' + a[0] + ',' + a[1] + ',' + a[2] + ',' + al + ')'; }
+  var hx = c.accent_color, s = root.style;
+  var vars = {
+    '--coral': hx, '--coral-active': shade(hx, -0.14), '--coral-text': shade(hx, -0.22),
+    '--coral-soft': alpha(hx, 0.12), '--coral-disabled': alpha(hx, 0.35),
+    '--accent': hx, '--accent-hover': shade(hx, -0.14), '--accent-soft': alpha(hx, 0.12),
+    '--accent-text': shade(hx, -0.22), '--accent-border': alpha(hx, 0.25),
+    '--primary': hx, '--primary-hover': shade(hx, -0.14), '--primary-soft': alpha(hx, 0.12),
+    '--primary-text': shade(hx, -0.22), '--primary-border': alpha(hx, 0.25),
+    '--radius-xs': r[0], '--radius-sm': r[1], '--radius': r[2], '--radius-md': r[2],
+    '--radius-lg': r[3], '--radius-xl': r[4], '--radius-control': r[1], '--radius-card': r[2], '--radius-modal': r[3]
+  };
+  for (var k in vars) s.setProperty(k, vars[k]);
+
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = c.theme === 'dark' ? '#181715' : '#faf9f5';
+})();
+</script>
+
+<script>
+// IMMEDIATE kiosk-mode detection — runs BEFORE any JS modules load.
+(function() {
+  var hash = window.location.hash.slice(1) || '/';
+  var path = hash.split('?')[0];
+  var isKiosk = path === '/pos' || path === '/pos/sales' || path === '/pos/quotes' || path.indexOf('/pos/sale/') === 0;
+  if (isKiosk) {
+    document.documentElement.classList.add('kiosk-mode');
+  }
+  window.addEventListener('hashchange', function() {
+    var h = window.location.hash.slice(1) || '/';
+    var p = h.split('?')[0];
+    var k = p === '/pos' || p === '/pos/sales' || p === '/pos/quotes' || p.indexOf('/pos/sale/') === 0;
+    if (k) {
+      document.documentElement.classList.add('kiosk-mode');
+    } else {
+      document.documentElement.classList.remove('kiosk-mode');
+    }
+  });
+})();
+</script>
+</head>
+<body>
+<div id="app"></div>
+<div id="toast-container" aria-live="polite" aria-atomic="true"></div>
+<div id="loading-overlay" class="loading-overlay" hidden>
+  <div class="loading-spinner"></div>
+  <p id="loading-text">Working...</p>
+</div>
+<div id="modal-root"></div>
+<script type="module" src="/static/js/app.js?v=v47"></script>
+<script>
+// Register service worker — v37+ enables PWA offline support (cache-first static, IndexedDB queue)
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/static/sw.js?v=v47').then((reg) => {
+      // Check for updates every 5 minutes
+      setInterval(() => reg.update(), 300000);
+
+      reg.addEventListener('updatefound', () => {
+        const newWorker = reg.installing;
+        if (newWorker) {
+          newWorker.addEventListener('statechange', () => {
+            // When new SW is activated, prompt user to reload (don't force)
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // New version downloaded — show a toast
+              console.log('[sw] New version downloaded. Reload to activate.');
+              if (window.__billbookToast) {
+                window.__billbookToast('New version available — reload to update', 'info', { duration: 8000 });
+              }
+            }
+          });
+        }
+      });
+    }).catch((err) => {
+      console.warn('[sw] Registration failed:', err);
+    });
+  });
+}
+</script>
+</body>
+</html>

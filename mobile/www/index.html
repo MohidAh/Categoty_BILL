@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>BillBook — Connect</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #181715; color: #faf9f5;
+      min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; padding: 24px;
+    }
+    .logo {
+      width: 56px; height: 56px; background: #cc785c; border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px; font-weight: 800; color: white; margin-bottom: 24px;
+    }
+    h1 { font-size: 22px; margin-bottom: 8px; }
+    p { color: #a09d96; font-size: 14px; margin-bottom: 32px; text-align: center; }
+    .field { width: 100%; max-width: 320px; margin-bottom: 16px; }
+    .field label { display: block; font-size: 12px; color: #6c6a64; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .field input {
+      width: 100%; padding: 12px 16px; border: 1px solid #252320; border-radius: 8px;
+      background: #1f1e1b; color: #faf9f5; font-size: 16px;
+    }
+    .field input:focus { outline: none; border-color: #cc785c; }
+    .btn {
+      width: 100%; max-width: 320px; padding: 14px; border: none; border-radius: 8px;
+      background: #cc785c; color: white; font-size: 16px; font-weight: 600; cursor: pointer;
+    }
+    .btn:active { background: #a9583e; }
+    .btn:disabled { background: #252320; }
+    .divider { width: 100%; max-width: 320px; height: 1px; background: #252320; margin: 24px 0; }
+    .discovered { width: 100%; max-width: 320px; }
+    .discovered-item {
+      padding: 12px 16px; background: #1f1e1b; border-radius: 8px; margin-bottom: 8px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .discovered-item:active { background: #252320; }
+    .discovered-name { font-size: 14px; font-weight: 600; }
+    .discovered-ip { font-size: 12px; color: #6c6a64; }
+    .pairing { display: none; }
+    .pairing.active { display: block; }
+    .error { color: #EF4444; font-size: 13px; margin-top: 8px; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="logo">BB</div>
+  <h1>Connect to BillBook</h1>
+  <p>Enter your shop's IP address or discover it on your network.</p>
+
+  <!-- Manual connection -->
+  <div class="field">
+    <label>Shop IP Address or URL</label>
+    <input type="text" id="server-url" placeholder="192.168.1.100:8000" autocomplete="off">
+  </div>
+  <button class="btn" id="connect-btn" onclick="connectToServer()">Connect</button>
+  <div class="error" id="connect-error"></div>
+
+  <div class="divider"></div>
+
+  <!-- mDNS discovery -->
+  <div class="discovered" id="discovered-list">
+    <label style="font-size:12px;color:#6c6a64;text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:8px;">Discovered on Network</label>
+    <div id="discovered-items" style="color:#6c6a64;font-size:13px;">Scanning...</div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Pairing -->
+  <div class="pairing" id="pairing-section">
+    <div class="field">
+      <label>Pairing Code (6 digits)</label>
+      <input type="text" id="pairing-code" placeholder="123456" maxlength="6" inputmode="numeric">
+    </div>
+    <div class="field">
+      <label>Device Name</label>
+      <input type="text" id="device-name" placeholder="My Phone" value="My Phone">
+    </div>
+    <button class="btn" id="pair-btn" onclick="pairDevice()">Pair Device</button>
+    <div class="error" id="pair-error"></div>
+  </div>
+
+  <script>
+    // Connection + pairing logic for BillBook mobile client.
+    // Uses Capacitor Preferences for storage when available, localStorage as fallback.
+
+    const STORAGE_KEY = 'billbook_server_url';
+    const TOKEN_KEY = 'billbook_device_token';
+
+    // Check if already connected
+    (function init() {
+      const savedUrl = localStorage.getItem(STORAGE_KEY);
+      const savedToken = localStorage.getItem(TOKEN_KEY);
+      if (savedUrl && savedToken) {
+        // Try to load the main app
+        window.location.href = savedUrl + '/#/?device_token=' + encodeURIComponent(savedToken);
+      }
+    })();
+
+    function connectToServer() {
+      const url = document.getElementById('server-url').value.trim();
+      const errEl = document.getElementById('connect-error');
+      errEl.textContent = '';
+
+      if (!url) { errEl.textContent = 'Please enter an IP address or URL'; return; }
+
+      // Normalize URL
+      let fullUrl = url;
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        fullUrl = 'http://' + url;
+      }
+
+      // Test connection
+      fetch(fullUrl + '/api/setup-status')
+        .then(r => {
+          if (!r.ok) throw new Error('Server not reachable');
+          return r.json();
+        })
+        .then(data => {
+          localStorage.setItem(STORAGE_KEY, fullUrl);
+          // Show pairing section
+          document.getElementById('pairing-section').classList.add('active');
+          // Check if already paired
+          const existingToken = localStorage.getItem(TOKEN_KEY);
+          if (existingToken) {
+            // Already paired — load the app
+            window.location.href = fullUrl + '/#/?device_token=' + encodeURIComponent(existingToken);
+          }
+        })
+        .catch(err => {
+          errEl.textContent = 'Cannot reach server: ' + err.message;
+        });
+    }
+
+    function pairDevice() {
+      const code = document.getElementById('pairing-code').value.trim();
+      const deviceName = document.getElementById('device-name').value.trim() || 'Mobile Device';
+      const serverUrl = localStorage.getItem(STORAGE_KEY);
+      const errEl = document.getElementById('pair-error');
+      errEl.textContent = '';
+
+      if (!code || code.length !== 6) {
+        errEl.textContent = 'Enter the 6-digit code from the shop PC';
+        return;
+      }
+
+      fetch(serverUrl + '/api/devices/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: code, device_name: deviceName }),
+      })
+        .then(r => {
+          if (!r.ok) return r.json().then(d => { throw new Error(d.detail || d.error || 'Pairing failed'); });
+          return r.json();
+        })
+        .then(data => {
+          localStorage.setItem(TOKEN_KEY, data.token);
+          // Load the main app with the device token
+          window.location.href = serverUrl + '/#/?device_token=' + encodeURIComponent(data.token);
+        })
+        .catch(err => {
+          errEl.textContent = err.message;
+        });
+    }
+
+    // mDNS discovery (uses browser's fetch to scan common IPs — simplified)
+    // Full mDNS requires the Android NsdManager plugin (Phase 9 native code).
+    function scanNetwork() {
+      const itemsEl = document.getElementById('discovered-items');
+      // For now, just show a hint — actual mDNS requires native code
+      itemsEl.innerHTML = '<div style="color:#6c6a64;font-size:13px;">' +
+        'Automatic discovery requires the Android app. ' +
+        'Enter the IP address manually (shown on the shop PC\'s BillBook screen).</div>';
+    }
+    scanNetwork();
+  </script>
+</body>
+</html>

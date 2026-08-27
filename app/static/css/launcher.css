@@ -1,0 +1,405 @@
+/* ═══════════════════════════════════════════════════════════════
+   SnowUI App Launcher — fullscreen post-login home
+   ═══════════════════════════════════════════════════════════════ */
+
+.launcher-root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+/* ─── Launcher Topbar (Linear: dark, blends with bg) ─── */
+.launcher-topbar {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-6);
+  background: var(--bg);  /* Linear: topbar uses primary bg */
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+.launcher-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.launcher-logo {
+  width: 32px;
+  height: 32px;
+  background: var(--primary);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: white;
+}
+.launcher-logo svg { width: 18px; height: 18px; }
+.launcher-brand {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.launcher-topbar-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  max-width: 480px;
+  margin: 0 auto;
+}
+.launcher-search {
+  width: 100%;
+  max-width: 420px;
+  position: relative;
+}
+.launcher-search input {
+  width: 100%;
+  height: 38px;
+  padding: 0 14px 0 38px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+  transition: all 0.15s var(--ease);
+}
+.launcher-search input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-soft);
+}
+.launcher-search svg {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.launcher-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.launcher-icon-btn {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  cursor: pointer;
+  color: var(--text-2);
+  transition: all 0.15s var(--ease);
+}
+.launcher-icon-btn:hover {
+  background: var(--hover);
+  border-color: var(--border);
+  color: var(--text);
+}
+.launcher-icon-btn svg { width: 18px; height: 18px; }
+.launcher-user-menu {
+  position: relative;
+}
+.launcher-user-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-pill);
+  background: var(--primary-soft);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 2px solid var(--border);
+}
+.launcher-user-dropdown {
+  position: absolute;
+  top: 44px;
+  right: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-hover);
+  min-width: 200px;
+  z-index: 100;
+  overflow: hidden;
+  display: none;
+}
+.launcher-user-dropdown.open { display: block; }
+.launcher-user-dropdown-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.launcher-user-dropdown-header .name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+}
+.launcher-user-dropdown-header .role {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: capitalize;
+  margin-top: 2px;
+}
+.launcher-user-dropdown-item {
+  padding: 10px 16px;
+  font-size: 13px;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all 0.1s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.launcher-user-dropdown-item:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.launcher-user-dropdown-item svg { width: 14px; height: 14px; }
+.launcher-user-dropdown-item.danger { color: var(--danger-text); }
+.launcher-user-dropdown-item.danger:hover { background: var(--danger-soft); }
+
+/* ─── Launcher Content ─── */
+.launcher-content {
+  flex: 1;
+  padding: var(--space-8) var(--space-8);
+  width: 100%;
+  margin: 0 auto;
+  overflow-y: auto;
+}
+
+/* Greeting */
+.launcher-greeting {
+  margin-bottom: var(--space-6);
+}
+.launcher-greeting h1 {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text);
+  margin-bottom: var(--space-1);
+}
+.launcher-greeting p {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* Resume pill */
+.launcher-resume {
+  margin-bottom: var(--space-6);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--primary-soft);
+  color: var(--primary-text);
+  border: 1px solid var(--primary-border);
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s var(--ease);
+}
+.launcher-resume:hover {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+  transform: translateY(-1px);
+}
+.launcher-resume svg { width: 14px; height: 14px; }
+
+/* Recent apps */
+.launcher-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: var(--space-3);
+  margin-top: var(--space-6);
+}
+
+/* ─── App Card Grid ─── */
+/* auto-fit (not auto-fill) collapses empty tracks so 7 cards stretch to fill
+   the full width on wide screens, instead of leaving empty space on the right. */
+.launcher-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-4);
+}
+@media (max-width: 640px) {
+  .launcher-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--space-3);
+  }
+}
+
+/* App Card — Linear: dark surface (#0F1011), subtle border, refined hover */
+.launcher-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-5);
+  cursor: pointer;
+  transition: all 0.2s var(--ease);
+  box-shadow: none;  /* Linear: cards are flat */
+  overflow: hidden;
+  text-decoration: none;
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 130px;
+}
+.launcher-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--card-color, var(--primary));
+  opacity: 0;
+  transition: opacity 0.2s var(--ease);
+}
+.launcher-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover);
+  text-decoration: none;
+  border-color: var(--border-strong);  /* Linear: border opacity increases on hover */
+}
+.launcher-card:hover::before {
+  opacity: 0.8;
+}
+.launcher-card:active {
+  transform: translateY(-1px);
+}
+
+/* Card icon chip */
+.launcher-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-control);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.launcher-card-icon svg { width: 24px; height: 24px; }
+
+/* Card text */
+.launcher-card-name {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.launcher-card-desc {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+/* Card badge */
+.launcher-card-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.launcher-card-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Card keyboard hint */
+.launcher-card-kbd {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  font-size: 10px;
+  padding: 2px 6px;
+  background: var(--hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+/* Recent apps row */
+.launcher-recent {
+  display: flex;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.launcher-recent-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all 0.15s var(--ease);
+  text-decoration: none;
+}
+.launcher-recent-item:hover {
+  background: var(--hover);
+  border-color: var(--border-strong);
+  color: var(--text);
+  text-decoration: none;
+}
+.launcher-recent-item svg { width: 14px; height: 14px; }
+
+/* Loading skeleton */
+.launcher-skeleton {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-5);
+}
+.launcher-skeleton-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: var(--space-6) var(--space-5);
+  min-height: 140px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .launcher-topbar { padding: 0 var(--space-4); }
+  .launcher-topbar-center { display: none; }
+  .launcher-content { padding: var(--space-6) var(--space-4); }
+  .launcher-grid { grid-template-columns: repeat(2, 1fr); gap: var(--space-3); }
+  .launcher-card { min-height: 120px; padding: var(--space-4); }
+  .launcher-card-icon { width: 40px; height: 40px; }
+  .launcher-card-icon svg { width: 20px; height: 20px; }
+  .launcher-greeting h1 { font-size: 22px; }
+}

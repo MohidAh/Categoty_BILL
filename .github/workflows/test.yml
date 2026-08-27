@@ -1,0 +1,60 @@
+# BillBook Test CI — runs pytest on every push and PR
+# Pairs with desktop.yml (which only builds the Tauri shell on tag push).
+# This workflow catches regressions in the Python backend + routers BEFORE
+# they ship in a release tag.
+
+name: Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:  # manual trigger for debugging
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Test-only deps (not in requirements.txt because they're not needed at runtime)
+          pip install pytest httpx dbfread
+          pip install bcrypt cryptography  # ensure security deps present even if optional in requirements.txt
+
+      - name: Show environment
+        run: |
+          python --version
+          python -c "import sqlite3; print('SQLite', sqlite3.sqlite_version)"
+          python -c "import fastapi; print('FastAPI', fastapi.__version__)"
+          pytest --version
+
+      - name: Run tests
+        env:
+          BILLBOOK_DATA_DIR: /tmp/billbook_ci_data
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          mkdir -p $BILLBOOK_DATA_DIR
+          python -m pytest tests/ -v --tb=short --maxfail=30
+
+      - name: Upload test results on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-output
+          path: |
+            .pytest_cache/
+            /tmp/billbook_ci_data/*.log
+          retention-days: 7

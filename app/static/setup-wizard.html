@@ -1,0 +1,574 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BillBook Setup</title>
+<link rel="manifest" href="/static/manifest.json">
+<meta name="theme-color" content="#faf9f5">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles/base.css">
+    <link rel="stylesheet" href="/static/styles/components.css">
+    <link rel="stylesheet" href="/static/styles/layout.css">
+<style>
+* { box-sizing: border-box; }
+body {
+  margin: 0; font-family: var(--font-sans); background: var(--bg);
+  color: var(--text);
+  min-height: 100vh; display: grid; place-items: center; padding: 20px;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color .2s var(--ease), color .2s var(--ease);
+}
+.wizard-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 32px; width: 100%; max-width: 560px;
+  box-shadow: var(--shadow-lg);
+}
+.wizard-logo {
+  width: 48px; height: 48px; margin: 0 auto 16px;
+  background: var(--primary);
+  border-radius: 12px; display: flex; align-items: center; justify-content: center;
+}
+.wizard-logo svg { width: 24px; height: 24px; color: white; }
+h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; text-align: center; letter-spacing: -0.02em; }
+.wizard-sub { color: var(--text-2); font-size: 13px; text-align: center; margin-bottom: 24px; }
+
+/* Step indicator */
+.steps { display: flex; gap: 8px; margin-bottom: 24px; }
+.step-dot {
+  flex: 1; height: 4px; border-radius: 2px; background: var(--border);
+  transition: background .2s;
+}
+.step-dot.active { background: var(--primary); }
+.step-dot.done { background: var(--success, #10b981); }
+
+/* Form elements */
+.wizard-label { display: block; font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+.wizard-input {
+  width: 100%; padding: 10px 14px; background: var(--bg-input);
+  color: var(--text); border: 1px solid var(--border); border-radius: var(--radius-control);
+  font-family: inherit; font-size: 14px; margin-bottom: 12px;
+  transition: border-color .15s, box-shadow .15s;
+  height: 40px;
+}
+.wizard-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.wizard-btn {
+  width: 100%; padding: 10px; background: var(--primary); color: white;
+  border: 1px solid var(--primary); border-radius: var(--radius-control); font-weight: 600; font-size: 14px;
+  cursor: pointer; font-family: inherit; transition: background .15s, transform .1s;
+  height: 42px;
+}
+.wizard-btn:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+.wizard-btn:active { transform: scale(0.98); }
+.wizard-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.wizard-btn-secondary {
+  background: transparent; color: var(--text-2); border: 1px solid var(--border);
+}
+.wizard-btn-secondary:hover { background: var(--hover); }
+
+/* Password strength meter */
+.strength { height: 4px; border-radius: 2px; background: var(--border); margin-bottom: 12px; overflow: hidden; }
+.strength-bar { height: 100%; width: 0; transition: width .3s, background .3s; }
+.strength-label { font-size: 11px; color: var(--text-2); margin-bottom: 12px; }
+
+/* Business type cards */
+.biz-types { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+.biz-card {
+  padding: 16px 8px; border: 2px solid var(--border); border-radius: var(--radius-control);
+  text-align: center; cursor: pointer; transition: border-color .15s, background .15s;
+}
+.biz-card:hover { border-color: var(--primary); }
+.biz-card.selected { border-color: var(--primary); background: var(--primary-soft); }
+.biz-card svg { width: 24px; height: 24px; color: var(--primary); margin-bottom: 4px; }
+.biz-card-name { font-size: 13px; font-weight: 600; }
+.biz-card-desc { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+
+/* Category editor */
+.cat-row {
+  display: grid; grid-template-columns: 60px 1fr 100px 32px; gap: 8px;
+  margin-bottom: 8px; align-items: center;
+}
+.cat-row .wizard-input { margin-bottom: 0; }
+.cat-remove {
+  width: 32px; height: 40px; border: 1px solid var(--border); border-radius: var(--radius-control);
+  background: transparent; color: var(--danger-text); cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.cat-remove:hover { background: var(--danger-soft); }
+.cat-add {
+  display: inline-flex; align-items: center; gap: 4px; color: var(--primary);
+  background: none; border: none; cursor: pointer; font-size: 13px; font-weight: 600;
+  font-family: inherit;
+}
+
+/* Radio group */
+.radio-group { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.radio-option {
+  display: flex; align-items: center; gap: 8px; padding: 12px;
+  border: 1px solid var(--border); border-radius: var(--radius-control); cursor: pointer;
+}
+.radio-option:hover { border-color: var(--primary); }
+.radio-option.selected { border-color: var(--primary); background: var(--primary-soft); }
+.radio-option input { margin: 0; }
+.radio-option-label { font-size: 14px; font-weight: 600; }
+.radio-option-desc { font-size: 11px; color: var(--text-2); }
+
+/* v8.14.2: Integration cards for step 5 (GDrive / FBR / Digest) */
+.int-card {
+  border: 1px solid var(--border); border-radius: var(--radius-control);
+  padding: 14px; margin-bottom: 10px; transition: border-color .15s, background .15s;
+}
+.int-card.on { border-color: var(--primary); background: var(--primary-soft); }
+.int-row { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.int-row input[type=checkbox] {
+  width: 18px; height: 18px; accent-color: var(--primary); cursor: pointer; margin: 0; flex: 0 0 18px;
+}
+.int-icon { width: 28px; height: 28px; flex: 0 0 28px; color: var(--primary); display: flex; align-items: center; justify-content: center; }
+.int-icon svg { width: 22px; height: 22px; }
+.int-meta { flex: 1; min-width: 0; }
+.int-title { font-size: 14px; font-weight: 600; }
+.int-desc { font-size: 11px; color: var(--text-2); margin-top: 2px; line-height: 1.4; }
+.int-config { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); display: none; }
+.int-card.on .int-config { display: block; }
+.int-note { font-size: 11px; color: var(--text-2); margin: 6px 0 0; line-height: 1.5; }
+.int-note code { background: var(--hover); padding: 1px 4px; border-radius: 3px; font-size: 11px; }
+
+.wizard-err { color: var(--danger-text); font-size: 12px; min-height: 16px; margin-top: 8px; text-align: center; }
+.wizard-nav { display: flex; gap: 8px; margin-top: 16px; }
+.wizard-nav .wizard-btn { flex: 1; }
+
+.wizard-theme-toggle {
+  position: fixed; top: 20px; right: 20px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-control); padding: 8px;
+  cursor: pointer; color: var(--text-2);
+  box-shadow: var(--shadow-card);
+  z-index: 10; display: flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px;
+}
+.wizard-theme-toggle:hover { background: var(--hover); }
+.wizard-theme-toggle svg { width: 18px; height: 18px; }
+</style></head><body>
+<button class="wizard-theme-toggle" id="theme-btn" title="Toggle theme"></button>
+<div class="wizard-card">
+  <div class="wizard-logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+  </div>
+  <h1>Welcome to BillBook</h1>
+  <p class="wizard-sub">Let's set up your shop in 5 quick steps.</p>
+
+  <div class="steps">
+    <div class="step-dot active" id="dot-1"></div>
+    <div class="step-dot" id="dot-2"></div>
+    <div class="step-dot" id="dot-3"></div>
+    <div class="step-dot" id="dot-4"></div>
+    <div class="step-dot" id="dot-5"></div>
+  </div>
+
+  <div id="step-content"></div>
+  <div class="wizard-err" id="err"></div>
+</div>
+
+<script>
+// ─── State ─────────────────────────────────────────────────
+var step = 1;
+var state = {
+  password: '', passwordConfirm: '',
+  businessType: 'wholesale',
+  categories: [],
+  geminiKey: '',
+  startPage: 'launcher',
+  // v8.14.2: opt-in integrations (step 5). All default off / empty.
+  gdriveConnect: false,
+  gdriveBackupHour: 2,        // 2 AM PKT — operator-chosen daily Drive backup hour
+  digestEnabled: false,
+  digestHour: 21,              // 9 PM PKT — when the daily WhatsApp digest is sent
+  digestPhone: '',             // E.164 like +923331234567
+  fbrAutoPost: false,
+};
+
+var TEMPLATES = {
+  wholesale: [
+    {code: 'A', name: 'Budget',   sell_price: 250,  color: '#3b82f6', sort_order: 1},
+    {code: 'B', name: 'Standard', sell_price: 500,  color: '#10b981', sort_order: 2},
+    {code: 'C', name: 'Premium',  sell_price: 750,  color: '#f59e0b', sort_order: 3},
+    {code: 'D', name: 'Luxury',   sell_price: 1000, color: '#ef4444', sort_order: 4},
+  ],
+  retail: [
+    {code: 'A', name: 'Small',  sell_price: 100, color: '#3b82f6', sort_order: 1},
+    {code: 'B', name: 'Medium', sell_price: 300, color: '#10b981', sort_order: 2},
+    {code: 'C', name: 'Large',  sell_price: 600, color: '#f59e0b', sort_order: 3},
+  ],
+  custom: [
+    {code: 'A', name: 'Category A', sell_price: 100, color: '#3b82f6', sort_order: 1},
+  ],
+};
+
+// ─── Theme ─────────────────────────────────────────────────
+(function() {
+  var t = localStorage.getItem('bb-theme') || 'light';
+  document.documentElement.setAttribute('data-theme', t);
+  var sun = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+  var moon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  document.getElementById('theme-btn').innerHTML = t === 'dark' ? sun : moon;
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = t === 'dark' ? '#181715' : '#faf9f5';
+})();
+document.getElementById('theme-btn').onclick = function() {
+  var cur = document.documentElement.getAttribute('data-theme');
+  var next = cur === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('bb-theme', next);
+  var sun = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+  var moon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  document.getElementById('theme-btn').innerHTML = next === 'dark' ? sun : moon;
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = next === 'dark' ? '#181715' : '#faf9f5';
+};
+
+// ─── Check if already set up — redirect to login ───────────
+fetch('/api/setup/state').then(function(r) { return r.json(); }).then(function(s) {
+  if (s.initialized) {
+    window.location.href = '/login';
+  }
+}).catch(function() {});
+
+// ─── Step rendering ────────────────────────────────────────
+function updateDots() {
+  for (var i = 1; i <= 5; i++) {
+    var dot = document.getElementById('dot-' + i);
+    dot.className = 'step-dot' + (i === step ? ' active' : (i < step ? ' done' : ''));
+  }
+}
+
+function renderStep() {
+  updateDots();
+  var c = document.getElementById('step-content');
+  document.getElementById('err').textContent = '';
+  if (step === 1) renderStep1(c);
+  else if (step === 2) renderStep2(c);
+  else if (step === 3) renderStep3(c);
+  else if (step === 4) renderStep4(c);
+  else if (step === 5) renderStep5(c);
+}
+
+function renderStep1(c) {
+  c.innerHTML = '<label class="wizard-label">Step 1 — Set Your Password</label>' +
+    '<p style="font-size:12px;color:var(--text-2);margin:0 0 12px">This password protects your shop data. Minimum 8 characters.</p>' +
+    '<input class="wizard-input" id="w-pw" type="password" placeholder="Password" autofocus>' +
+    '<input class="wizard-input" id="w-pw2" type="password" placeholder="Confirm password">' +
+    '<div class="strength"><div class="strength-bar" id="w-strength"></div></div>' +
+    '<div class="strength-label" id="w-strength-label">Enter a password</div>' +
+    '<div class="wizard-nav"><button class="wizard-btn" id="w-next">Next →</button></div>';
+  var pw = document.getElementById('w-pw');
+  var pw2 = document.getElementById('w-pw2');
+  pw.addEventListener('input', function() {
+    var v = pw.value;
+    var score = 0;
+    if (v.length >= 8) score++;
+    if (v.length >= 12) score++;
+    if (/[A-Z]/.test(v) && /[a-z]/.test(v)) score++;
+    if (/\d/.test(v)) score++;
+    if (/[^A-Za-z0-9]/.test(v)) score++;
+    var pct = (score / 5) * 100;
+    var bar = document.getElementById('w-strength');
+    var label = document.getElementById('w-strength-label');
+    bar.style.width = pct + '%';
+    if (score <= 1) { bar.style.background = 'var(--danger,#ef4444)'; label.textContent = 'Weak'; }
+    else if (score <= 3) { bar.style.background = 'var(--warning,#f59e0b)'; label.textContent = 'Fair'; }
+    else { bar.style.background = 'var(--success,#10b981)'; label.textContent = 'Strong'; }
+  });
+  document.getElementById('w-next').onclick = function() {
+    var v = pw.value, v2 = pw2.value;
+    if (v.length < 8) { document.getElementById('err').textContent = 'Password must be at least 8 characters'; return; }
+    if (v !== v2) { document.getElementById('err').textContent = 'Passwords do not match'; return; }
+    state.password = v;
+    step = 2; renderStep();
+  };
+  pw.focus();
+}
+
+function renderStep2(c) {
+  var types = [
+    {key: 'wholesale', name: 'Wholesale', desc: 'Discount store', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l1-5h16l1 5"/><path d="M4 9v11a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V9"/></svg>'},
+    {key: 'retail', name: 'Retail', desc: 'Shop fronts', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7l-8-4-8 4 8 4 8-4z"/><path d="M4 7v10l8 4 8-4V7"/></svg>'},
+    {key: 'custom', name: 'Custom', desc: 'Configure later', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9z"/></svg>'},
+  ];
+  c.innerHTML = '<label class="wizard-label">Step 2 — Business Type</label>' +
+    '<p style="font-size:12px;color:var(--text-2);margin:0 0 12px">Pick a template to pre-fill your price categories. You can edit them next.</p>' +
+    '<div class="biz-types">' +
+    types.map(function(t) {
+      return '<div class="biz-card' + (state.businessType === t.key ? ' selected' : '') + '" data-biz="' + t.key + '">' + t.icon +
+        '<div class="biz-card-name">' + t.name + '</div><div class="biz-card-desc">' + t.desc + '</div></div>';
+    }).join('') + '</div>' +
+    '<div class="wizard-nav"><button class="wizard-btn wizard-btn-secondary" id="w-back">← Back</button><button class="wizard-btn" id="w-next">Next →</button></div>';
+  document.querySelectorAll('.biz-card').forEach(function(card) {
+    card.onclick = function() {
+      state.businessType = card.getAttribute('data-biz');
+      state.categories = JSON.parse(JSON.stringify(TEMPLATES[state.businessType]));
+      document.querySelectorAll('.biz-card').forEach(function(c) { c.classList.remove('selected'); });
+      card.classList.add('selected');
+    };
+  });
+  if (state.categories.length === 0) {
+    state.categories = JSON.parse(JSON.stringify(TEMPLATES[state.businessType]));
+  }
+  document.getElementById('w-back').onclick = function() { step = 1; renderStep(); };
+  document.getElementById('w-next').onclick = function() {
+    state.categories = JSON.parse(JSON.stringify(TEMPLATES[state.businessType]));
+    step = 3; renderStep();
+  };
+}
+
+function renderStep3(c) {
+  c.innerHTML = '<label class="wizard-label">Step 3 — Confirm Categories</label>' +
+    '<p style="font-size:12px;color:var(--text-2);margin:0 0 12px">These are your price buttons in the POS. Edit names/prices, add, or remove.</p>' +
+    '<div id="cat-list"></div>' +
+    '<button class="cat-add" id="w-add-cat">+ Add Category</button>' +
+    '<div class="wizard-nav"><button class="wizard-btn wizard-btn-secondary" id="w-back">← Back</button><button class="wizard-btn" id="w-next">Next →</button></div>';
+  renderCatList();
+  document.getElementById('w-add-cat').onclick = function() {
+    var n = state.categories.length + 1;
+    state.categories.push({code: String.fromCharCode(64 + n), name: 'Category ' + String.fromCharCode(64 + n), sell_price: 100, color: '#3b82f6', sort_order: n});
+    renderCatList();
+  };
+  document.getElementById('w-back').onclick = function() { step = 2; renderStep(); };
+  document.getElementById('w-next').onclick = function() {
+    if (state.categories.length === 0) { document.getElementById('err').textContent = 'Add at least one category'; return; }
+    step = 4; renderStep();
+  };
+}
+
+function renderCatList() {
+  var list = document.getElementById('cat-list');
+  list.innerHTML = state.categories.map(function(cat, i) {
+    return '<div class="cat-row">' +
+      '<input class="wizard-input" data-cat-i="' + i + '" data-cat-f="code" value="' + (cat.code || '') + '" placeholder="Code">' +
+      '<input class="wizard-input" data-cat-i="' + i + '" data-cat-f="name" value="' + (cat.name || '') + '" placeholder="Name">' +
+      '<input class="wizard-input" data-cat-i="' + i + '" data-cat-f="sell_price" type="number" value="' + (cat.sell_price || 0) + '" placeholder="Price">' +
+      '<button class="cat-remove" data-cat-rm="' + i + '">×</button>' +
+      '</div>';
+  }).join('');
+  list.querySelectorAll('input').forEach(function(inp) {
+    inp.addEventListener('input', function() {
+      var i = parseInt(inp.getAttribute('data-cat-i'));
+      var f = inp.getAttribute('data-cat-f');
+      if (f === 'sell_price') state.categories[i][f] = parseFloat(inp.value) || 0;
+      else state.categories[i][f] = inp.value;
+    });
+  });
+  list.querySelectorAll('[data-cat-rm]').forEach(function(btn) {
+    btn.onclick = function() {
+      var i = parseInt(btn.getAttribute('data-cat-rm'));
+      state.categories.splice(i, 1);
+      renderCatList();
+    };
+  });
+}
+
+function renderStep4(c) {
+  c.innerHTML = '<label class="wizard-label">Step 4 — Optional AI</label>' +
+    '<p style="font-size:12px;color:var(--text-2);margin:0 0 12px">Skip these to start selling right away. You can configure them later in Settings.</p>' +
+    '<label class="wizard-label" style="font-size:12px">Gemini API Key (optional)</label>' +
+    '<input class="wizard-input" id="w-gemini" type="password" placeholder="Paste Gemini key (skipped if empty)" value="' + (state.geminiKey || '') + '">' +
+    '<label class="wizard-label" style="font-size:12px;margin-top:8px">Start Page</label>' +
+    '<div class="radio-group">' +
+    '<label class="radio-option' + (state.startPage === 'launcher' ? ' selected' : '') + '"><input type="radio" name="start" value="launcher" ' + (state.startPage === 'launcher' ? 'checked' : '') + '><div><div class="radio-option-label">Launcher</div><div class="radio-option-desc">App picker (default)</div></div></label>' +
+    '<label class="radio-option' + (state.startPage === 'dashboard' ? ' selected' : '') + '"><input type="radio" name="start" value="dashboard" ' + (state.startPage === 'dashboard' ? 'checked' : '') + '><div><div class="radio-option-label">Dashboard</div><div class="radio-option-desc">Store profit overview</div></div></label>' +
+    '<label class="radio-option' + (state.startPage === 'pos' ? ' selected' : '') + '"><input type="radio" name="start" value="pos" ' + (state.startPage === 'pos' ? 'checked' : '') + '><div><div class="radio-option-label">POS</div><div class="radio-option-desc">Cashier kiosk mode</div></div></label>' +
+    '</div>' +
+    '<div class="wizard-nav"><button class="wizard-btn wizard-btn-secondary" id="w-back">← Back</button><button class="wizard-btn" id="w-next">Next →</button></div>';
+  document.querySelectorAll('input[name="start"]').forEach(function(r) {
+    r.onchange = function() {
+      state.startPage = r.value;
+      document.querySelectorAll('.radio-option').forEach(function(o) { o.classList.remove('selected'); });
+      r.closest('.radio-option').classList.add('selected');
+    };
+  });
+  document.getElementById('w-back').onclick = function() { step = 3; renderStep(); };
+  document.getElementById('w-next').onclick = function() {
+    state.geminiKey = document.getElementById('w-gemini').value;
+    step = 5; renderStep();
+  };
+}
+
+// ─── v8.14.2: Step 5 — opt-in integrations (GDrive / FBR / Digest) ───────
+// All three default off. The wizard persists the operator's choices in the
+// same POST /api/setup/wizard call. GDrive OAuth happens AFTER the wizard
+// completes (the wizard creates the session, then the frontend opens the
+// OAuth URL in a popup so the existing /api/gdrive/* endpoints can use the
+// session cookie).
+function renderStep5(c) {
+  // Hour options 0..23, formatted as 12 AM / 1 AM / 2 AM ... 11 PM
+  var hourOptions = function(selected) {
+    var out = '';
+    for (var h = 0; h <= 23; h++) {
+      var label = (h === 0 ? '12 AM (midnight)' : h < 12 ? h + ' AM' : h === 12 ? '12 PM (noon)' : (h - 12) + ' PM');
+      out += '<option value="' + h + '"' + (h === selected ? ' selected' : '') + '>' + label + '</option>';
+    }
+    return out;
+  };
+  var gdriveIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+  var fbrIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>';
+  var digestIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  c.innerHTML = '<label class="wizard-label">Step 5 — Optional Integrations</label>' +
+    '<p style="font-size:12px;color:var(--text-2);margin:0 0 12px">Everything here is off by default. Pick what you want now — you can change these in Settings later.</p>' +
+
+    // ─── Google Drive ────────────────────────────────────────────
+    '<div class="int-card' + (state.gdriveConnect ? ' on' : '') + '" id="int-gdrive">' +
+      '<div class="int-row"><input type="checkbox" id="w-gdrive" ' + (state.gdriveConnect ? 'checked' : '') + '><div class="int-icon">' + gdriveIcon + '</div>' +
+        '<div class="int-meta"><div class="int-title">Google Drive auto-backup</div>' +
+        '<div class="int-desc">Encrypted daily DB snapshot to your own Google Drive. 30-day retention. Weekly restore-test.</div></div>' +
+      '</div>' +
+      '<div class="int-config">' +
+        '<label class="wizard-label" style="font-size:12px">Daily backup time</label>' +
+        '<select class="wizard-input" id="w-gdrive-hour">' + hourOptions(state.gdriveBackupHour) + '</select>' +
+        '<p class="int-note">After setup, a Google sign-in popup will open to authorize BillBook. Your Drive credentials never touch our servers — OAuth refresh-token is stored encrypted on this device only.</p>' +
+      '</div>' +
+    '</div>' +
+
+    // ─── FBR ────────────────────────────────────────────────────
+    '<div class="int-card' + (state.fbrAutoPost ? ' on' : '') + '" id="int-fbr">' +
+      '<div class="int-row"><input type="checkbox" id="w-fbr" ' + (state.fbrAutoPost ? 'checked' : '') + '><div class="int-icon">' + fbrIcon + '</div>' +
+        '<div class="int-meta"><div class="int-title">FBR auto-post (Pakistan POS)</div>' +
+        '<div class="int-desc">Submit each sale to the Federal Board of Revenue as it is rung up. Keeps you compliant automatically.</div></div>' +
+      '</div>' +
+      '<div class="int-config">' +
+        '<p class="int-note">You will need to add your FBR POS credentials (usr_id, password, pos_id) in <code>Settings → FBR</code> before live submissions start. The wizard just toggles the auto-post flag here — sales will queue locally until credentials are added.</p>' +
+      '</div>' +
+    '</div>' +
+
+    // ─── Daily WhatsApp Digest ─────────────────────────────────
+    '<div class="int-card' + (state.digestEnabled ? ' on' : '') + '" id="int-digest">' +
+      '<div class="int-row"><input type="checkbox" id="w-digest" ' + (state.digestEnabled ? 'checked' : '') + '><div class="int-icon">' + digestIcon + '</div>' +
+        '<div class="int-meta"><div class="int-title">Daily WhatsApp digest</div>' +
+        '<div class="int-desc">One message at day-end with total sales, top items, low stock, and cash drawer reconciliation.</div></div>' +
+      '</div>' +
+      '<div class="int-config">' +
+        '<label class="wizard-label" style="font-size:12px">Send time</label>' +
+        '<select class="wizard-input" id="w-digest-hour">' + hourOptions(state.digestHour) + '</select>' +
+        '<label class="wizard-label" style="font-size:12px;margin-top:4px">Your WhatsApp phone (E.164)</label>' +
+        '<input class="wizard-input" id="w-digest-phone" type="tel" placeholder="+923331234567" value="' + (state.digestPhone || '') + '">' +
+        '<p class="int-note">Twilio SID + Auth Token must be added in <code>Settings → Owner Digest</code> before messages can be sent. The wizard just captures the recipient + send time here.</p>' +
+      '</div>' +
+    '</div>' +
+
+    '<div class="wizard-nav"><button class="wizard-btn wizard-btn-secondary" id="w-back">← Back</button><button class="wizard-btn" id="w-finish">Finish Setup ✓</button></div>';
+
+  // Toggle handlers — clicking the checkbox (or row) flips the card.
+  var toggleCard = function(cardId, checkboxId, stateKey) {
+    var cb = document.getElementById(checkboxId);
+    var card = document.getElementById(cardId);
+    var flip = function() {
+      state[stateKey] = cb.checked;
+      card.classList.toggle('on', cb.checked);
+    };
+    cb.onchange = flip;
+    // Allow clicking anywhere on the row to toggle the checkbox.
+    card.querySelector('.int-row').addEventListener('click', function(e) {
+      if (e.target === cb) return; // checkbox already flips itself
+      e.preventDefault();
+      cb.checked = !cb.checked;
+      flip();
+    });
+  };
+  toggleCard('int-gdrive', 'w-gdrive', 'gdriveConnect');
+  toggleCard('int-fbr', 'w-fbr', 'fbrAutoPost');
+  toggleCard('int-digest', 'w-digest', 'digestEnabled');
+
+  // Persist hour selects + phone on change so back/forward navigation works.
+  document.getElementById('w-gdrive-hour').onchange = function() {
+    state.gdriveBackupHour = parseInt(this.value, 10) || 2;
+  };
+  document.getElementById('w-digest-hour').onchange = function() {
+    state.digestHour = parseInt(this.value, 10) || 21;
+  };
+  document.getElementById('w-digest-phone').oninput = function() {
+    state.digestPhone = this.value;
+  };
+
+  document.getElementById('w-back').onclick = function() { step = 4; renderStep(); };
+  document.getElementById('w-finish').onclick = function() {
+    // Re-read all field values from the DOM (defensive against the user
+    // having changed the dropdown without firing onchange in some browsers).
+    state.gdriveBackupHour = parseInt(document.getElementById('w-gdrive-hour').value, 10) || 2;
+    state.digestHour = parseInt(document.getElementById('w-digest-hour').value, 10) || 21;
+    state.digestPhone = (document.getElementById('w-digest-phone').value || '').trim();
+    // Validate phone IF digest is enabled
+    if (state.digestEnabled && !state.digestPhone) {
+      document.getElementById('err').textContent = 'Enter a WhatsApp phone number, or turn the digest off.';
+      return;
+    }
+    if (state.digestEnabled && !/^\+?\d{8,15}$/.test(state.digestPhone.replace(/[\s-]/g, ''))) {
+      document.getElementById('err').textContent = 'Phone must be E.164 format, e.g. +923331234567';
+      return;
+    }
+    finishSetup();
+  };
+}
+
+function finishSetup() {
+  var btn = document.getElementById('w-finish');
+  btn.textContent = 'Setting up...'; btn.disabled = true;
+  document.getElementById('err').textContent = '';
+  fetch('/api/setup/wizard', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      password: state.password,
+      business_type: state.businessType,
+      categories: state.categories,
+      gemini_key: state.geminiKey,
+      start_page: state.startPage,
+      // v8.14.2: opt-in integrations
+      gdrive_connect: state.gdriveConnect,
+      gdrive_backup_hour: state.gdriveBackupHour,
+      digest_enabled: state.digestEnabled,
+      digest_hour: state.digestHour,
+      digest_phone: state.digestPhone,
+      fbr_auto_post: state.fbrAutoPost,
+    }),
+  }).then(function(r) {
+    return r.json().then(function(d) { return {ok: r.ok, data: d}; });
+  }).then(function(res) {
+    if (res.ok) {
+      localStorage.setItem('bb-role', 'manager');
+      localStorage.setItem('bb-user-name', 'Manager');
+      var page = res.data.start_page || 'launcher';
+      var url = '/?#' + (page === 'pos' ? '/pos' : page === 'dashboard' ? '/reports/store-profit' : '/launcher');
+      // v8.14.2: if operator opted-in to GDrive, kick off the OAuth flow
+      // in a popup BEFORE navigating away. The wizard POST just set the
+      // session cookie, so the popup can hit /api/gdrive/connect-url and
+      // the GET /api/gdrive/callback with that cookie. Google's consent
+      // screen opens; on grant, the callback redirects the popup to a
+      // small static "Connected" page the operator can close.
+      var openGdrive = res.data.gdrive_connect === true || state.gdriveConnect;
+      var finishRedirect = function() { window.location.href = url; };
+      if (openGdrive) {
+        try {
+          fetch('/api/gdrive/connect-url', {credentials: 'same-origin'})
+            .then(function(r2) { return r2.json(); })
+            .then(function(d2) {
+              if (d2 && d2.url) {
+                window.open(d2.url, 'gdrive-oauth',
+                  'width=560,height=720,noopener=yes');
+              }
+            }).catch(function() {}).finally(finishRedirect);
+          // Safety net: navigate even if the connect-url fetch hangs.
+          setTimeout(finishRedirect, 3000);
+        } catch (e) { finishRedirect(); }
+      } else {
+        finishRedirect();
+      }
+    } else {
+      document.getElementById('err').textContent = res.data.error || 'Setup failed';
+      btn.textContent = 'Finish Setup ✓'; btn.disabled = false;
+    }
+  }).catch(function(err) {
+    document.getElementById('err').textContent = 'Network error: ' + err.message;
+    btn.textContent = 'Finish Setup ✓'; btn.disabled = false;
+  });
+}
+
+// ─── Start ─────────────────────────────────────────────────
+renderStep();
+</script></body></html>

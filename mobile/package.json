@@ -1,0 +1,17 @@
+{
+  "name": "BillBook Mobile",
+  "version": "6.0.0",
+  "description": "BillBook POS mobile client",
+  "scripts": {
+    "sync": "npx cap sync",
+    "open:android": "npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/preferences": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0"
+  }
+}

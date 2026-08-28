@@ -11,9 +11,25 @@
 //
 // See build/windows/TAURI_AUTO_UPDATE_GUIDE.md for the full walkthrough.
 
+// v8.15.2 FIX: standard Tauri attribute - hides the black console window
+// in release builds. println!/eprintln! logs then only appear in debug
+// builds (a POS should never flash a cmd.exe window at shop staff).
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+// v8.15.2 FIX: the Manager trait provides AppHandle::get_webview_window
+// (E0599 in the CI log: "no method named `get_webview_window` found").
+use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_updater::UpdaterExt;
+
+// v8.15.2 FIX: a bin crate must have a `main` function (E0601). The bare
+// `pub fn run()` below is the lib-style entry used by mobile templates;
+// we keep it (mobile_entry_point attribute needs it) but add the real
+// entry point that calls it.
+fn main() {
+    run();
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

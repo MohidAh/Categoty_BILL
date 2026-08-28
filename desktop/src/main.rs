@@ -1,6 +1,24 @@
 // BillBook Tauri Shell — main entry point
 // Spawns the Python sidecar, waits for health check, opens webview.
 //
+// v8.17.10 HARDENING (after "installed it, run it, nothing happens"):
+//   1. FILE LOG — every step (and every Python stdout/stderr line) is appended
+//      to %APPDATA%\com.billbook.app\logs\desktop.log so a failed start is
+//      never silent again. Release builds have no console (see windows_subsystem
+//      below), so println! alone was invisible in exactly the situations we
+//      need it most.
+//   2. VISIBLE FAILURE DIALOGS — if the backend doesn't signal ready within
+//      90s, or dies during startup/mid-session, a native dialog says so
+//      (instead of a silent exit).
+//   3. WINDOW NAVIGATION FIX — the bundled frontend uses relative URLs
+//      (fetch('/api/...')). Loaded from the bundled static assets the page
+//      origin is tauri.localhost, so every API call would hit the wrong
+//      origin and fail. Now, as soon as the sidecar prints
+//      "BILLBOOK_READY port=NNNN", the main window is navigated to
+//      http://127.0.0.1:NNNN (the FastAPI server that also serves the UI —
+//      same as dev mode). This ALSO fixes the latent bug where the sidecar
+//      picked port 8001+ when 8000 was busy but the UI assumed 8000.
+//
 // v8.15.1: auto-update support (Tauri v2 updater plugin, Rust-side check).
 //   - ~8s after startup the app asks the update endpoint for a newer version.
 //   - If one exists, a native dialog asks the user to confirm.
@@ -14,14 +32,18 @@
 // v8.15.2 FIX: standard Tauri attribute - hides the black console window
 // in release builds. println!/eprintln! logs then only appear in debug
 // builds (a POS should never flash a cmd.exe window at shop staff).
+// Downside: release crashes are silent — which is why v8.17.10 adds the
+// file log + failure dialogs above.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 // v8.15.2 FIX: the Manager trait provides AppHandle::get_webview_window
 // (E0599 in the CI log: "no method named `get_webview_window` found").
 use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
+use tauri_plugin_shell::process::CommandEvent;
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_updater::UpdaterExt;
+use std::time::Duration;
 
 // v8.15.2 FIX: a bin crate must have a `main` function (E0601). The bare
 // `pub fn run()` below is the lib-style entry used by mobile templates;
@@ -46,21 +68,107 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             // --- Spawn the sidecar binary ------------------------------------
-            let (mut rx, _child) = app
-                .shell()
-                .sidecar("billbook_sidecar")
-                .expect("failed to spawn sidecar (is desktop/binaries/billbook_sidecar-<triple>.exe present? run scripts/build_sidecar.bat and re-run the build)")
-                .spawn()
-                .expect("failed to spawn sidecar process");
+            // v8.17.10: no more .expect() panics — in a release build (no
+            // console) a panic is a completely silent death. Log to file
+            // and exit with a written trace instead.
+            let command = match app.shell().sidecar("billbook_sidecar") {
+                Ok(c) => c,
+                Err(e) => {
+                    log(app.handle(), &format!("sidecar resolve failed: {e}"));
+                    log(app.handle(),
+                        "hint: is billbook_sidecar.exe present next to BillBook.exe? \
+                         If antivirus quarantined it, this is the moment it fails.");
+                    std::process::exit(1);
+                }
+            };
+            let (mut rx, _child) = match command.spawn() {
+                Ok(v) => v,
+                Err(e) => {
+                    log(app.handle(), &format!("sidecar spawn failed: {e}"));
+                    log(app.handle(),
+                        "hint: antivirus real-time protection blocking the Python \
+                         sidecar produces exactly this silent failure.");
+                    std::process::exit(1);
+                }
+            };
+            log(app.handle(), "sidecar spawned; waiting for BILLBOOK_READY");
 
-            // Listen for the health line: BILLBOOK_READY port=XXXX
+            // --- Health listener + window navigation -------------------------
+            // v8.17.10: was "print the ready line and stop". Now it:
+            //   - logs ALL backend output (stdout + stderr + IO errors) to
+            //     the log file — a Python traceback is captured verbatim
+            //   - parses the port and navigates the main window to the
+            //     live backend (fixes relative /api/ URLs in release mode)
+            //   - before ready: 90s timeout -> dialog; channel closed or
+            //     process terminated -> dialog
+            //   - after ready: keeps logging; termination -> dialog
+            let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                while let Some(event) = rx.recv().await {
-                    if let tauri_plugin_shell::process::CommandEvent::Stdout(line) = event {
-                        let line_str = String::from_utf8_lossy(&line);
-                        if line_str.contains("BILLBOOK_READY") {
-                            println!("[billbook] sidecar ready: {}", line_str.trim());
-                            break;
+                let mut ready = false;
+                loop {
+                    let evt = if ready {
+                        rx.recv().await
+                    } else {
+                        match tokio::time::timeout(Duration::from_secs(90), rx.recv()).await {
+                            Ok(v) => v,
+                            Err(_) => {
+                                fatal_dialog(
+                                    &handle,
+                                    "BillBook's backend did not start within 90 seconds \
+                                     (it may be blocked by antivirus, or the disk is very \
+                                     slow on first launch).",
+                                );
+                                return;
+                            }
+                        }
+                    };
+
+                    let Some(event) = evt else {
+                        // Stream closed without a Terminated event (rare)
+                        if !ready {
+                            fatal_dialog(
+                                &handle,
+                                "BillBook's backend exited during startup before it \
+                                 became ready.",
+                            );
+                        }
+                        return;
+                    };
+
+                    match event {
+                        CommandEvent::Stdout(line) => {
+                            let s = String::from_utf8_lossy(&line);
+                            log(&handle, &format!("[sidecar] {}", s.trim_end()));
+                            if let Some(port) = parse_ready_port(&s) {
+                                ready = true;
+                                log(&handle, &format!("backend ready on port {port}"));
+                                navigate_when_ready(&handle, port).await;
+                            }
+                        }
+                        CommandEvent::Stderr(line) => {
+                            // Python tracebacks land here — the goldmine for
+                            // diagnosing startup crashes.
+                            log(&handle, &format!("[sidecar:err] {}", String::from_utf8_lossy(&line).trim_end()));
+                        }
+                        CommandEvent::Error(e) => {
+                            log(&handle, &format!("[sidecar:io] {e}"));
+                        }
+                        CommandEvent::Terminated(status) => {
+                            log(&handle, &format!("backend process terminated: {status:?}"));
+                            if ready {
+                                fatal_dialog(
+                                    &handle,
+                                    "BillBook's backend stopped unexpectedly while \
+                                     running. Please restart BillBook.",
+                                );
+                            } else {
+                                fatal_dialog(
+                                    &handle,
+                                    "BillBook's backend exited during startup. The Python \
+                                     error is captured in the log file below.",
+                                );
+                            }
+                            return;
                         }
                     }
                 }
@@ -79,7 +187,7 @@ pub fn run() {
                     // Give the app (and the sidecar) time to settle before
                     // phoning the update server. Errors are logged, never
                     // fatal: an unreachable endpoint must not stop the POS.
-                    tokio::time::sleep(std::time::Duration::from_secs(8)).await;
+                    tokio::time::sleep(Duration::from_secs(8)).await;
                     if let Err(e) = check_for_updates(&handle).await {
                         eprintln!("[billbook-updater] {e}");
                     }
@@ -90,6 +198,76 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running BillBook");
+}
+
+/// Append a timestamped line to %APPDATA%\com.billbook.app\logs\desktop.log
+/// (identifier comes from tauri.conf.json). Also eprintln for dev builds,
+/// where a console exists.
+fn log(app: &tauri::AppHandle, msg: &str) {
+    eprintln!("[billbook] {msg}");
+    let Ok(dir) = app.path().app_data_dir() else { return };
+    let logs = dir.join("logs");
+    let _ = std::fs::create_dir_all(&logs);
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(logs.join("desktop.log"))
+    {
+        use std::io::Write;
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let _ = f.write_all(format!("[{ts}] {msg}\n").as_bytes());
+    }
+}
+
+/// Show a blocking error dialog (safe here: called from async worker
+/// threads, NOT the main thread) and log the same message first.
+fn fatal_dialog(app: &tauri::AppHandle, msg: &str) {
+    log(app, &format!("FATAL: {msg}"));
+    let _ = app
+        .dialog()
+        .message(format!(
+            "{msg}\n\nTechnical details are saved in:\n%APPDATA%\\com.billbook.app\\logs\\desktop.log"
+        ))
+        .title("BillBook Problem")
+        .buttons(MessageDialogButtons::OkCustom("Close".into()))
+        .blocking_show();
+}
+
+/// Parse "BILLBOOK_READY port=8000" -> 8000. Defaults to 8000 when the
+/// port token is missing.
+fn parse_ready_port(line: &str) -> Option<u16> {
+    if !line.contains("BILLBOOK_READY") {
+        return None;
+    }
+    line.split_whitespace()
+        .find(|t| t.starts_with("port="))
+        .and_then(|t| t[5..].parse::<u16>().ok())
+        .or(Some(8000))
+}
+
+/// Point the main webview window at the live backend. The window may not
+/// exist yet for a short moment after setup returns (creation order races),
+/// so retry a few times before giving up.
+async fn navigate_when_ready(app: &tauri::AppHandle, port: u16) {
+    let url = format!("http://127.0.0.1:{port}");
+    for attempt in 1..=10u8 {
+        if let Some(w) = app.get_webview_window("main") {
+            match w.eval(&format!("window.location.replace('{url}')")) {
+                Ok(()) => {
+                    log(app, &format!("main window navigated to {url}"));
+                    return;
+                }
+                Err(e) => log(app, &format!("navigate eval failed (attempt {attempt}): {e}")),
+            }
+        } else {
+            log(app, &format!("main window not created yet (attempt {attempt})"));
+        }
+        tokio::time::sleep(Duration::from_millis(300)).await;
+    }
+    log(app, "could not navigate main window after 10 attempts");
 }
 
 /// Ask the update endpoint for a newer version; if one exists, confirm with

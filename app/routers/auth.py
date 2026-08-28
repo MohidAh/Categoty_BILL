@@ -120,6 +120,15 @@ def _set_auth_cookie(response: JSONResponse, token: str, request: Request,
             if isinstance(body, dict):
                 body["csrf_token"] = csrf_token
                 response.body = _json.dumps(body).encode("utf-8")
+                # v8.17.10 FIX: JSONResponse.__init__ computed Content-Length
+                # from the ORIGINAL body. Mutating .body without updating the
+                # header makes every REAL HTTP server (uvicorn/h11) abort the
+                # response mid-send with "Too much data for declared
+                # Content-Length" — the browser shows "Failed to fetch" on
+                # login AND on setup-wizard completion. The pytest suite
+                # missed this because Starlette's TestClient has no h11
+                # layer to enforce the declared length.
+                response.headers["content-length"] = str(len(response.body))
         except Exception:
             pass
     return response

@@ -1,10 +1,9 @@
 {
   "identifier": "default",
-  "description": "BillBook desktop capabilities. The auto-update check runs Rust-side, so 'updater:default' + 'process:default' are only required for the optional JS API (e.g. a 'Check for updates' button in the UI). They are included so that integration works out of the box.",
+  "description": "BillBook desktop capabilities. The auto-update check runs Rust-side (app.updater()?.check() in src/main.rs), and Rust-side calls do NOT go through the permission system - only IPC calls from the webview JS do. 'updater:default' is kept so a future in-app 'Check for updates' button works out of the box. v8.15.2 FIX: 'process:default' REMOVED - it requires the tauri-plugin-process crate, which is not a Cargo.toml dependency, so tauri-build failed with 'Permission process:default not found'. Rust-side app.restart() is core Tauri and needs no permission. If a JS relaunch button is ever added: add tauri-plugin-process = '2' to Cargo.toml, register .plugin(tauri_plugin_process::init()) in main.rs, AND restore the permission here - all three together.",
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "updater:default",
-    "process:default"
+    "updater:default"
   ]
 }

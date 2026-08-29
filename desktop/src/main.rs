@@ -40,7 +40,9 @@
 // (E0599 in the CI log: "no method named `get_webview_window` found").
 use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
-use tauri_plugin_shell::process::CommandEvent;
+use tauri_plugin_shell::process::{CommandChild, CommandEvent};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_updater::UpdaterExt;
 use std::time::Duration;
@@ -49,6 +51,36 @@ use std::time::Duration;
 // `pub fn run()` below is the lib-style entry used by mobile templates;
 // we keep it (mobile_entry_point attribute needs it) but add the real
 // entry point that calls it.
+// v8.17.14 SIDE CAR LIFECYCLE FIX: the sidecar is a child process of
+// BillBook.exe, and Windows does NOT kill a process tree when the parent
+// exits. Two consequences, both fixed here:
+//   1. The auto-updater exits the app with a hard std::process::exit()
+//      right after launching the NSIS installer - the orphaned sidecar
+//      kept running, LOCKED billbook_sidecar.exe, and the installer
+//      failed with "Error opening file for writing" (v8.17.13 incident).
+//   2. Every NORMAL app close also leaked a zombie backend process
+//      (the mysterious port-8000 conflicts).
+static SIDECAR_CHILD: OnceLock<Mutex<Option<CommandChild>>> = OnceLock::new();
+
+/// True while the auto-updater is replacing the app: the sidecar's death
+/// is then EXPECTED and must not trigger the "backend stopped" dialog.
+static UPDATING: AtomicBool = AtomicBool::new(false);
+
+fn sidecar_child() -> &'static Mutex<Option<CommandChild>> {
+    SIDECAR_CHILD.get_or_init(|| Mutex::new(None))
+}
+
+/// Terminate the sidecar (no-op if already gone). Called before the
+/// updater launches the installer, and on normal app exit.
+fn kill_sidecar() -> bool {
+    sidecar_child()
+        .lock()
+        .ok()
+        .and_then(|mut guard| guard.take())
+        .map(|child| child.kill().is_ok())
+        .unwrap_or(false)
+}
+
 fn main() {
     install_panic_hook();
     run();
@@ -106,7 +138,7 @@ pub fn run() {
                     std::process::exit(1);
                 }
             };
-            let (mut rx, _child) = match command.spawn() {
+            let (mut rx, child) = match command.spawn() {
                 Ok(v) => v,
                 Err(e) => {
                     log(app.handle(), &format!("sidecar spawn failed: {e}"));
@@ -116,6 +148,10 @@ pub fn run() {
                     std::process::exit(1);
                 }
             };
+            // v8.17.14: remember the child so kill_sidecar() can reach it.
+            if let Ok(mut guard) = sidecar_child().lock() {
+                *guard = Some(child);
+            }
             log(app.handle(), "sidecar spawned; waiting for BILLBOOK_READY");
 
             // --- Health listener + window navigation -------------------------
@@ -150,6 +186,9 @@ pub fn run() {
 
                     let Some(event) = evt else {
                         // Stream closed without a Terminated event (rare)
+                        if UPDATING.load(Ordering::SeqCst) {
+                            return; // expected: updater stopped the sidecar
+                        }
                         if !ready {
                             fatal_dialog(
                                 &handle,
@@ -180,6 +219,10 @@ pub fn run() {
                         }
                         CommandEvent::Terminated(status) => {
                             log(&handle, &format!("backend process terminated: {status:?}"));
+                            if UPDATING.load(Ordering::SeqCst) {
+                                log(&handle, "sidecar exit expected - update in progress");
+                                return;
+                            }
                             if ready {
                                 fatal_dialog(
                                     &handle,
@@ -222,8 +265,17 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running BillBook");
+        .build(tauri::generate_context!())
+        .expect("error while running BillBook")
+        // v8.17.14: on any normal exit (window closed / OS shutdown) take
+        // the sidecar down with us. RunEvent::Exit is NOT emitted for the
+        // updater's std::process::exit - that path calls kill_sidecar()
+        // explicitly above.
+        .run(|_app, event| {
+            if let tauri::RunEvent::Exit = event {
+                kill_sidecar();
+            }
+        });
 }
 
 /// Append a timestamped line to %APPDATA%\com.billbook.app\logs\desktop.log
@@ -333,6 +385,14 @@ async fn check_for_updates(app: &tauri::AppHandle) -> tauri_plugin_updater::Resu
     if !install {
         println!("[billbook-updater] user postponed the update");
         return Ok(());
+    }
+
+    // v8.17.14: stop the sidecar BEFORE the installer runs. Otherwise the
+    // updater's std::process::exit orphans it, billbook_sidecar.exe stays
+    // locked, and NSIS fails with "Error opening file for writing".
+    UPDATING.store(true, Ordering::SeqCst);
+    if kill_sidecar() {
+        println!("[billbook-updater] sidecar stopped for update");
     }
 
     let mut downloaded: u64 = 0;

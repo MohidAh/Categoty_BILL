@@ -50,7 +50,32 @@ use std::time::Duration;
 // we keep it (mobile_entry_point attribute needs it) but add the real
 // entry point that calls it.
 fn main() {
+    install_panic_hook();
     run();
+}
+
+fn install_panic_hook() {
+    std::panic::set_hook(Box::new(|info| {
+        let msg = format!("[PANIC] {info}");
+        eprintln!("[billbook] {msg}");
+        let Ok(appdata) = std::env::var("APPDATA") else { return };
+        let logs = std::path::Path::new(&appdata)
+            .join("com.billbook.app")
+            .join("logs");
+        let _ = std::fs::create_dir_all(&logs);
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(logs.join("desktop.log"))
+        {
+            use std::io::Write;
+            let ts = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let _ = f.write_all(format!("[{ts}] {msg}\n").as_bytes());
+        }
+    }));
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

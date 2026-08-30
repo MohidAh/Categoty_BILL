@@ -133,6 +133,7 @@ route('/bills/', async (el, path) => {
                 <tr>
                   <td></td>
                   <td class="col-required">Totals</td>
+                  <td class="col-required"></td>
                   <td class="col-extra col-code"></td>
                   <td class="col-required"></td>
                   <td class="col-required"></td>
@@ -141,7 +142,10 @@ route('/bills/', async (el, path) => {
                   <td class="col-extra col-category"></td>
                   <td class="col-required"></td>
                   <td class="col-required table-num" id="ft-cost">Rs 0</td>
-                  <td class="col-required table-num" id="ft-profit">Rs 0</td>
+                  <td class="col-required table-num profit-cell">
+                    <span class="profit-value" id="ft-profit">Rs 0</span>
+                    <span class="profit-margin" id="ft-margin"></span>
+                  </td>
                   <td></td>
                 </tr>
               </tfoot>
@@ -185,7 +189,7 @@ route('/bills/', async (el, path) => {
   }
 
   function recalcGrand() {
-    let totalCost = 0, totalPieces = 0, totalProfit = 0;
+    let totalCost = 0, totalPieces = 0, totalProfit = 0, totalRevenue = 0;
     $$('.item-row').forEach(tr => {
       const price = parseFloat(tr.querySelector('.i-price').value) || 0;
       const qty = parseFloat(tr.querySelector('.i-qty').value) || 0;
@@ -194,14 +198,27 @@ route('/bills/', async (el, path) => {
       const p = unit === 'dozen' ? qty * 12 : qty;
       totalPieces += p;
       totalCost += price * p;
+      totalRevenue += sell * p;
       totalProfit += (sell - price) * p;
     });
     const count = $$('.item-row').length;
     $('#item-count').textContent = `${count} item${count !== 1 ? 's' : ''}`;
     $('#ft-pieces').textContent = fmt(totalPieces);
     $('#ft-cost').textContent = fmtRs(totalCost);
-    $('#ft-profit').textContent = fmtRs(totalProfit);
-    $('#ft-profit').className = `table-num ${totalProfit >= 0 ? 'text-success' : 'text-danger'}`;
+
+    // v8.18.5: footer shows TOTAL margin alongside total profit — same
+    // two-line layout and color thresholds as the per-item Profit column
+    // (≥30% green, 20-30% amber, <20% red). Margin = totalProfit /
+    // totalRevenue; shows '—' while no sell prices are entered.
+    const totalMargin = totalRevenue > 0 ? totalProfit / totalRevenue : null;
+    const marginClass = totalMargin == null ? '' :
+      totalMargin >= 0.3 ? 'text-success' : totalMargin >= 0.2 ? 'text-warning' : 'text-danger';
+    const profitEl = $('#ft-profit');
+    profitEl.textContent = fmtRs(parseFloat(totalProfit.toFixed(6)));
+    profitEl.className = `profit-value ${totalProfit >= 0 ? 'text-success' : 'text-danger'}`;
+    const marginEl = $('#ft-margin');
+    marginEl.textContent = totalMargin == null ? '—' : fmtDecimalPct(totalMargin, 0);
+    marginEl.className = `profit-margin ${marginClass}`;
 
     const writtenEl = $('#f_total');
     const written = parseFloat(writtenEl.value) || 0;

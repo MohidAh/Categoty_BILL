@@ -228,6 +228,8 @@ def upload(request: Request, files: list[UploadFile] = File(...)):
     with db.conn() as c:
         bill_id = c.execute("INSERT INTO bills DEFAULT VALUES").lastrowid
     pages = []
+    page_counter = 0  # v8.18.5: running page counter — a multi-page PDF must
+                       # not collapse all its pages onto one page number
     for i, f in enumerate(files):
         # v8.13.2 M4: Read with size cap to avoid loading huge files into memory
         data = f.file.read(MAX_UPLOAD_BYTES + 1)
@@ -237,10 +239,11 @@ def upload(request: Request, files: list[UploadFile] = File(...)):
         _validate_magic_bytes(data, f.filename or "upload")
         saved = save_upload(data, f.filename or "upload", UPLOADS)
         for p in render_pages(saved, PAGES, stem_prefix=saved.stem):
+            page_counter += 1
             with db.conn() as c:
                 c.execute(
                     "INSERT INTO bill_pages(bill_id, filename, page_no) VALUES(?,?,?)",
-                    (bill_id, p.name, i + 1),
+                    (bill_id, p.name, page_counter),
                 )
             pages.append(p)
         # v8.2.3: Delete the original uploaded file — we only need the rendered pages
@@ -264,10 +267,10 @@ def upload(request: Request, files: list[UploadFile] = File(...)):
         for it in v["items"]:
             c.execute(
                 "INSERT INTO bill_items(bill_id, raw, price, qty, unit, line_total, confidence, "
-                "sell_price) VALUES(?,?,?,?,?,?,?,?)",
+                "sell_price, category_id, page_no) VALUES(?,?,?,?,?,?,?,?,?,?)",
                 (bill_id, it["raw"], it["price"], it["qty"], it["unit"],
                  it["line_total"], it.get("structural_confidence") or it.get("confidence"),
-                 it.get("sell_price")),
+                 it.get("sell_price"), it.get("category_id"), it.get("page_no")),
             )
         c.execute(
             "UPDATE bills SET supplier_name=?, phone=?, bill_date=?, written_total=?, "

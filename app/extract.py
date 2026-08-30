@@ -456,7 +456,9 @@ def _group_by_priority(providers):
 
 def _try_provider_parallel(name, fn, pages, on_progress=None):
     """Try a single provider. Returns (data, name) or raises."""
-    if len(pages) > 2:
+    # v8.18.5: page-by-page whenever there is more than one page — see the
+    # note in extract() for why multi-image single calls are forbidden.
+    if len(pages) > 1:
         return _extract_chunked(pages, fn, name, on_progress), name
     return fn(pages), name
 
@@ -481,12 +483,24 @@ def extract(pages: list[Path], on_progress=None) -> tuple[dict, str]:
         n_providers = len(group)
 
         if n_providers == 1 or len(pages) <= 1:
-            # Single provider or single page — no splitting needed
             name, fn = group[0]
             try:
-                if len(pages) > 2:
+                # v8.18.5 FIX (user report: "when we add an image, all items
+                # show under that image instead of proper image-wise"):
+                # Providers send every image in ONE request and return lines
+                # with NO page attribution — so a 2-page batch came back as
+                # one unattributed blob and callers dumped every item onto
+                # the first page. Multi-page batches now ALWAYS go through
+                # _extract_chunked (1 page per request, page_no set per
+                # chunk) — same as the 3+ page path that already worked.
+                if len(pages) > 1:
                     return _extract_chunked(pages, fn, name, on_progress), name
-                return fn(pages), name
+                result = fn(pages)
+                # Single page: tag every line with page_no=1 — providers
+                # never set it themselves (they don't know their page index).
+                for ln in (result.get("lines") or []):
+                    ln["page_no"] = 1
+                return result, name
             except Exception as e:
                 errors.append(f"{name}: {e}")
                 continue
@@ -506,23 +520,24 @@ def extract(pages: list[Path], on_progress=None) -> tuple[dict, str]:
 
         def _process_subset(provider_idx, name, fn, assigned_pages, page_nos, on_progress):
             """Process a subset of pages with one provider, return (data, name)."""
-            if len(assigned_pages) > 2:
+            # v8.18.5: same rule as the single-provider path — a provider
+            # handed more than one page gets them chunked page-by-page, since
+            # a multi-image single request returns lines with no page
+            # attribution (which collapsed all items onto one page).
+            if len(assigned_pages) > 1:
                 result = _extract_chunked(assigned_pages, fn, name, on_progress)
-                # Override page_no with actual page numbers
-                for ln_idx, ln in enumerate(result.get("lines", [])):
-                    # Assign page_no based on chunk position in this provider's subset
-                    chunk_idx = ln_idx  # Rough — _extract_chunked sets page_no relative to subset
-                    # We'll fix this: _extract_chunked sets page_no = i+1 (relative to its subset)
-                    # So page_no=1 means first page in this provider's subset
+                # Remap page numbers: _extract_chunked sets page_no relative
+                # to this provider's SUBSET (1..len(subset)); map it back to
+                # the bill-wide page number via page_nos.
+                for ln in result.get("lines", []):
                     if "page_no" in ln and ln["page_no"] and 1 <= int(ln["page_no"]) <= len(page_nos):
                         ln["page_no"] = page_nos[int(ln["page_no"]) - 1]
                 return result, name
             else:
                 result = fn(assigned_pages)
-                # Set page_no for all lines from this provider
+                # Single page in this subset — every line belongs to it.
                 for ln in (result.get("lines") or []):
-                    if len(page_nos) == 1:
-                        ln["page_no"] = page_nos[0]
+                    ln["page_no"] = page_nos[0] if page_nos else 1
                 return result, name
 
         merged = {

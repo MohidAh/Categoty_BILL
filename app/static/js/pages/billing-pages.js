@@ -2,7 +2,7 @@
 // These render inside the Billing app SnowUI shell.
 import { route, navigate, reload } from '../router.js';
 import { api, apiPost, apiPut, apiDelete } from '../api.js';
-import { $, $$, esc, fmt, fmtRs, fmtDate, icon, toast, showLoading, hideLoading,
+import { $, $$, esc, flagText, fmt, fmtRs, fmtDate, icon, toast, showLoading, hideLoading,
          openModal, closeModal, skeletonCards, errorBox, emptyState } from '../utils.js';
 
 // Shared SVG icon set for billing extra pages
@@ -68,7 +68,7 @@ route('/bills/review', async (el) => {
             let flags = [];
             try { flags = JSON.parse(b.flags || '[]'); } catch {}
             const flagBadges = flags.length
-              ? flags.map(f => `<span class="badge badge-warning" style="margin-right:4px">${esc(f)}</span>`).join('')
+              ? flags.map(f => `<span class="badge badge-warning" style="margin-right:4px">${esc(flagText(f))}</span>`).join('')
               : '<span class="text-dim text-xs">—</span>';
             const total = b.written_total || b.computed_total || 0;
             return `<tr class="rq-row" data-id="${b.id}">

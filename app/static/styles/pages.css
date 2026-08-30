@@ -113,8 +113,9 @@
 }
 .bill-images {
   flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: auto;               /* v8.18.6: both axes — zoomed images are pannable */
+  overscroll-behavior: contain; /* zoom/pan gestures don't scroll the page behind */
+  touch-action: pan-x pan-y;    /* native touch scroll; 2-finger pinch handled in JS */
   padding: 8px;
   background: var(--bg-input);
   border: 1px solid var(--border);
@@ -125,12 +126,18 @@
   min-height: 0;  /* v8.5.4: CRITICAL for flex child scrolling */
 }
 .bill-img {
-  width: 100%;
+  width: 100%;              /* JS overrides with N% when the user zooms */
+  max-width: none;          /* never cap a zoomed image back to panel width */
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  transition: transform 0.2s var(--ease);
+  transition: transform 0.2s var(--ease);  /* rotation only — zoom is instant */
   transform-origin: top center;
+  -webkit-user-drag: none;  /* v8.18.6: images are panned, not dragged out */
+  user-select: none;
 }
+/* v8.18.6: grab cursors while zoomed in (mouse drag pans) */
+.bill-images.zoomed .bill-img { cursor: grab; }
+.bill-images.zoomed.grabbing .bill-img { cursor: grabbing; }
 .bill-images-empty {
   border: 1.5px dashed var(--border-strong);
   border-radius: var(--radius);

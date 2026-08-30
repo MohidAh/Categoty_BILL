@@ -42,6 +42,19 @@ export const esc = (s) => {
     .replace(/'/g, '&#39;');  // C8 fix: single quotes are now escaped too
 };
 
+// v8.18.6: Bill flags must render as text, never '[object Object]'.
+// Legacy bills stored cost-overrun warnings as objects ({message: "..."}).
+// The API now flattens them server-side, but this keeps every renderer safe
+// even if an object slips through any other path.
+export const flagText = (f) => {
+  if (f == null) return '';
+  if (typeof f === 'object') {
+    if (f.message) return String(f.message);
+    try { return JSON.stringify(f); } catch { return 'Warning'; }
+  }
+  return String(f);
+};
+
 // ---------- Icons (inline SVG) ----------
 const ICONS = {
   dashboard: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>',

@@ -207,6 +207,29 @@ class ConfirmIn(BaseModel):
     items: list[ItemIn] = []
 
 
+def _flag_text(f) -> str:
+    """v8.18.6: bill flags must be plain strings — the UI renders them with a
+    plain string interpolation, so a dict flag shows as '[object Object]' in
+    the yellow warning alerts on the edit-bill page.
+
+    Cost-overrun warnings from check_bill_cost_vs_cheapest_supplier() were
+    stored as structured dicts (with a human-readable .message field) by the
+    confirm endpoint. This helper flattens any dict flag to its message text:
+    new writes store strings, and rows already in existing databases are
+    healed on read (get_bill / list_bills) and on re-confirm / add-pages.
+    """
+    if isinstance(f, dict):
+        for key in ("message", "msg", "text", "warning", "error"):
+            v = f.get(key)
+            if v:
+                return str(v)
+        try:
+            return json.dumps(f, ensure_ascii=False)
+        except Exception:
+            return "warning"
+    return str(f)
+
+
 
 
 
@@ -735,7 +758,7 @@ async def _run_add_pages_job(job: jobs_mod.Job, bill_id: int,
                     summary += f" — {extracted_count} item(s) extracted via {provider}"
                 else:
                     summary += " — no items extracted, enter them manually"
-                merged_flags = old_flags + new_flags + [summary]
+                merged_flags = [_flag_text(f) for f in old_flags] + new_flags + [summary]
                 # Recompute the computed total across ALL items (old + new)
                 row = c.execute(
                     "SELECT COALESCE(SUM(line_total), 0) AS t FROM bill_items WHERE bill_id=?",
@@ -1003,7 +1026,14 @@ def list_bills(status: str = "", q: str = "", payment: str = "",
         rows = [dict(r) for r in c.execute(sql, args).fetchall()]
 
     for r in rows:
-        r["flag_count"] = len(json.loads(r["flags"] or "[]"))
+        try:
+            fl = json.loads(r["flags"] or "[]")
+        except Exception:
+            fl = []
+        # v8.18.6: sanitize — dict flags (legacy cost-overrun warnings) are
+        # flattened to message strings so the UI never renders '[object Object]'
+        r["flag_count"] = len(fl)
+        r["flags"] = json.dumps([_flag_text(f) for f in fl])
         # v8.16.0: Count low-confidence items for each bill
         with db.conn() as c2:
             review_count = c2.execute(
@@ -1043,7 +1073,10 @@ def get_bill(bill_id: int) -> Any:
     ) if bill["status"] == "review" else None
     return {
         **dict(bill),
-        "flags": json.loads(bill["flags"]),
+        # v8.18.6: flatten dict flags → message strings (legacy rows stored
+        # cost-overrun warnings as dicts; the edit page renders each flag with
+        # esc() and a dict showed up as '[object Object]')
+        "flags": [_flag_text(f) for f in json.loads(bill["flags"] or "[]")],
         "pages": [dict(p) for p in pages],
         "items": [dict(i) for i in items],
         "duplicate": dup,
@@ -1336,17 +1369,9 @@ def _confirm_check_rates_and_costs(c, bill_id: int, items: list, sup_id: int) ->
             [n.dict() if hasattr(n, 'dict') else n for n in items]
         )
         for w in cost_warnings:
-            rate_flags.append({
-                "type": "cost_overrun",
-                "category_id": w["category_id"],
-                "category_label": w["category_label"],
-                "new_price": w["new_price"],
-                "cheapest_supplier": w["cheapest_supplier"],
-                "cheapest_avg_price": w["cheapest_avg_price"],
-                "pct_higher": w["pct_higher"],
-                "extra_cost_per_unit": w["extra_cost_per_unit"],
-                "message": w["message"],
-            })
+            # v8.18.6: store the human-readable message string, NOT the dict.
+            # Dict flags render as '[object Object]' in the edit-bill alerts.
+            rate_flags.append(w["message"])
     except Exception as _e:
         from .. import profit as _profit_mod
         if hasattr(_profit_mod, 'log_state_drift'):
@@ -1362,7 +1387,7 @@ def _confirm_update_bill_status(c, bill_id: int, payload, sup_id: int,
         existing_flags = json.loads(payload.flags or "[]")
     except Exception:
         existing_flags = []
-    all_flags = existing_flags + rate_flags
+    all_flags = [_flag_text(f) for f in (existing_flags + rate_flags)]
     c.execute(
         "UPDATE bills SET supplier_id=?, supplier_name=?, phone=?, bill_date=?, bill_no=?, "
         "written_total=?, computed_total=?, unit=?, status='confirmed', "

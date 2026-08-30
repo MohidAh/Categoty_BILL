@@ -2,7 +2,7 @@
 import { route, navigate } from '../router.js';
 import { api, apiPost, apiDelete, apiUpload } from '../api.js';
 import { $, $$, toast, showLoading, hideLoading,
-         esc, fmt, fmtRs, fmtDate, fmtPct, fmtDecimalPct, icon, iconHtml, openModal, closeModal } from '../utils.js';
+         esc, flagText, fmt, fmtRs, fmtDate, fmtPct, fmtDecimalPct, icon, iconHtml, openModal, closeModal } from '../utils.js';
 
 route('/bills/', async (el, path) => {
   const id = path.split('/').pop();
@@ -39,23 +39,23 @@ route('/bills/', async (el, path) => {
 
     ${b.duplicate ? `<div class="alert alert-warning mb-4">${iconHtml('alert', 'alert-icon')}<div><strong>Possible duplicate</strong> — bill #${b.duplicate.id} (${esc(b.duplicate.supplier_name || '')}, ${fmtDate(b.duplicate.bill_date)}) has the same supplier and date.</div></div>` : ''}
 
-    ${b.flags.length ? b.flags.map(f => `<div class="alert alert-warning mb-2">${iconHtml('alert', 'alert-icon')}<div>${esc(f)}</div></div>`).join('') : (b.status === 'confirmed' ? `<div class="alert alert-success mb-2">${iconHtml('check', 'alert-icon')}<div>All checks passed — bill is confirmed.</div></div>` : '')}
+    ${b.flags.length ? b.flags.map(f => `<div class="alert alert-warning mb-2">${iconHtml('alert', 'alert-icon')}<div>${esc(flagText(f))}</div></div>`).join('') : (b.status === 'confirmed' ? `<div class="alert alert-success mb-2">${iconHtml('check', 'alert-icon')}<div>All checks passed — bill is confirmed.</div></div>` : '')}
 
     <div class="bill-edit" id="bill-edit-grid">
       <div class="bill-images-panel">
         ${b.pages.length ? `
           <div class="bill-images-toolbar">
-            <button class="btn btn-ghost btn-sm btn-icon" id="img-zoom-out" title="Zoom out">−</button>
+            <button class="btn btn-ghost btn-sm btn-icon" id="img-zoom-out" title="Zoom out (−)">−</button>
             <span class="bill-images-zoom" id="img-zoom-label">100%</span>
-            <button class="btn btn-ghost btn-sm btn-icon" id="img-zoom-in" title="Zoom in">+</button>
+            <button class="btn btn-ghost btn-sm btn-icon" id="img-zoom-in" title="Zoom in (+)">+</button>
             <button class="btn btn-ghost btn-sm btn-icon" id="img-rotate-left" title="Rotate left">↺</button>
             <button class="btn btn-ghost btn-sm btn-icon" id="img-rotate-right" title="Rotate right">↻</button>
             <button class="btn btn-ghost btn-sm" id="img-reset" title="Reset zoom & rotation">Fit</button>
             <button class="btn btn-ghost btn-sm btn-icon" id="img-pos-btn" title="Change image panel position">⇄</button>
-            <span class="bill-images-count">${b.pages.length} page${b.pages.length > 1 ? 's' : ''}</span>
+            <span class="bill-images-count" title="Pinch, Ctrl+scroll or double-click an image to zoom — drag / scroll to pan">${b.pages.length} page${b.pages.length > 1 ? 's' : ''} · pinch/scroll to zoom</span>
           </div>
           <div class="bill-images" id="bill-images-container">
-            ${b.pages.map(p => `<img src="/pages/${esc(p.filename)}" alt="Bill page ${p.page_no}" class="bill-img">`).join('')}
+            ${b.pages.map(p => `<img src="/pages/${esc(p.filename)}" alt="Bill page ${p.page_no}" class="bill-img" draggable="false">`).join('')}
           </div>` :
           `<div class="bill-images-empty">${icon('image', 28)}<p>No images uploaded yet.<br>Click "Add Images" to attach bill photos.</p></div>`}
       </div>
@@ -487,24 +487,111 @@ route('/bills/', async (el, path) => {
     applyColVisibility();
   });
 
-  // ---- Image zoom/rotate controls ----
+  // ---- v8.18.6: Image viewer — pinch / ctrl+scroll / button zoom + free pan ----
+  // Zoom sets each image's width to `zoom`% of the panel, so the
+  // .bill-images container (overflow:auto) grows real scrollbars on BOTH
+  // axes — the browser then pans natively: wheel, trackpad, scrollbars and
+  // one-finger touch scroll all just work. On top of that:
+  //   • ctrl+wheel (what a trackpad pinch emits) → zoom anchored at cursor
+  //   • two-finger pinch (touch screens)         → zoom anchored at midpoint
+  //   • double-click / double-tap                → toggle 100% ↔ 250%
+  //   • mouse drag while zoomed                  → pan (grab cursor)
+  // (The old version scaled via CSS transform with overflow-x:hidden, so
+  // anything past 100% was clipped on the sides and could not be reached.)
+  const MIN_ZOOM = 50, MAX_ZOOM = 500;
   let imgZoom = 100, imgRotation = 0;
-  const applyImgTransform = () => {
-    const imgs = $$('.bill-img');
-    imgs.forEach(img => {
-      img.style.transform = `scale(${imgZoom / 100}) rotate(${imgRotation}deg)`;
-      img.style.transformOrigin = 'top center';
-    });
-    const label = $('#img-zoom-label');
-    if (label) label.textContent = `${imgZoom}%`;
+  const imgCont = $('#bill-images-container');
+  const zoomLabel = $('#img-zoom-label');
+
+  const setZoom = (pct) => {
+    imgZoom = Math.round(Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, pct)));
+    $$('.bill-img').forEach(img => { img.style.width = imgZoom + '%'; });
+    if (zoomLabel) zoomLabel.textContent = imgZoom + '%';
+    if (imgCont) imgCont.classList.toggle('zoomed', imgZoom > 100);
   };
-  const imgContainer = $('#bill-images-container');
-  if (imgContainer) {
-    $('#img-zoom-in').addEventListener('click', () => { imgZoom = Math.min(300, imgZoom + 25); applyImgTransform(); });
-    $('#img-zoom-out').addEventListener('click', () => { imgZoom = Math.max(50, imgZoom - 25); applyImgTransform(); });
-    $('#img-rotate-left').addEventListener('click', () => { imgRotation -= 90; applyImgTransform(); });
-    $('#img-rotate-right').addEventListener('click', () => { imgRotation += 90; applyImgTransform(); });
-    $('#img-reset').addEventListener('click', () => { imgZoom = 100; imgRotation = 0; applyImgTransform(); });
+  const setRotation = (deg) => {
+    imgRotation = ((deg % 360) + 360) % 360;
+    $$('.bill-img').forEach(img => { img.style.transform = `rotate(${imgRotation}deg)`; });
+  };
+  // Zoom while keeping the content point under (cx, cy) — in client coords —
+  // pinned, then let the container scroll to wherever the user is looking.
+  const zoomAt = (pct, cx, cy) => {
+    if (!imgCont) { setZoom(pct); return; }
+    const r = imgCont.getBoundingClientRect();
+    const ax = (cx != null ? cx : r.left + r.width / 2) - r.left;
+    const ay = (cy != null ? cy : r.top + r.height / 2) - r.top;
+    const old = imgZoom;
+    setZoom(pct);
+    const k = imgZoom / old;
+    imgCont.scrollLeft = (imgCont.scrollLeft + ax) * k - ax;
+    imgCont.scrollTop = (imgCont.scrollTop + ay) * k - ay;
+  };
+
+  if (imgCont) {
+    $('#img-zoom-in').addEventListener('click', () => zoomAt(imgZoom + 25));
+    $('#img-zoom-out').addEventListener('click', () => zoomAt(imgZoom - 25));
+    $('#img-rotate-left').addEventListener('click', () => setRotation(imgRotation - 90));
+    $('#img-rotate-right').addEventListener('click', () => setRotation(imgRotation + 90));
+    $('#img-reset').addEventListener('click', () => {
+      setZoom(100); setRotation(0);
+      imgCont.scrollLeft = 0; imgCont.scrollTop = 0;
+    });
+
+    // Ctrl/Cmd+wheel = zoom (trackpad pinch emits exactly this; mouse users
+    // hold Ctrl). Plain wheel is left alone → native vertical scroll.
+    imgCont.addEventListener('wheel', (e) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      zoomAt(imgZoom * Math.exp(-e.deltaY * 0.002), e.clientX, e.clientY);
+    }, { passive: false });
+
+    // Two-finger pinch on touch screens. We only take ownership of the
+    // gesture while exactly 2 fingers are down (preventDefault on the 2nd
+    // touchstart stops the browser panning), so single-finger native
+    // scrolling between/around pages keeps working.
+    let pinchDist = 0, pinchZoom0 = 100;
+    const tDist = (t) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    const tMid = (t) => ({ x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 });
+    imgCont.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        pinchDist = tDist(e.touches);
+        pinchZoom0 = imgZoom;
+      }
+    }, { passive: false });
+    imgCont.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 2 && pinchDist > 0) {
+        e.preventDefault();
+        const m = tMid(e.touches);
+        zoomAt(pinchZoom0 * (tDist(e.touches) / pinchDist), m.x, m.y);
+      }
+    }, { passive: false });
+    imgCont.addEventListener('touchend', (e) => {
+      if (e.touches.length < 2) pinchDist = 0;
+    }, { passive: true });
+
+    // Double-click / double-tap an image → toggle fit / 250% at that point
+    imgCont.addEventListener('dblclick', (e) => {
+      if (!e.target.closest('.bill-img')) return;
+      e.preventDefault();
+      zoomAt(imgZoom > 100 ? 100 : 250, e.clientX, e.clientY);
+    });
+
+    // Mouse drag-pan while zoomed in (grab → grabbing cursor)
+    let panDrag = null;
+    imgCont.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'mouse' || e.button !== 0 || imgZoom <= 100) return;
+      panDrag = { x: e.clientX, y: e.clientY, sl: imgCont.scrollLeft, st: imgCont.scrollTop };
+      imgCont.classList.add('grabbing');
+    });
+    window.addEventListener('pointermove', (e) => {
+      if (!panDrag) return;
+      imgCont.scrollLeft = panDrag.sl - (e.clientX - panDrag.x);
+      imgCont.scrollTop = panDrag.st - (e.clientY - panDrag.y);
+    });
+    window.addEventListener('pointerup', () => {
+      if (panDrag) { panDrag = null; imgCont.classList.remove('grabbing'); }
+    });
   }
 
   // ---- v8.5.2: Wire up Save / Delete / Add-pages handlers ----

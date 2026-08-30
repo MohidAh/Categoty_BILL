@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Request, HTTPException, UploadFile, File, Form, BackgroundTasks
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Any, Optional
 
 from .. import db
@@ -133,6 +133,16 @@ class ProviderIn(BaseModel):
     priority: int = 0
     enabled: bool = True
 
+    # v8.18.4 FIX: keys pasted from password managers / docs often carry
+    # leading/trailing whitespace. Sent as-is it either crashes httpx
+    # ("Illegal header value") or is rejected by the provider. Strip once,
+    # centrally, at the API boundary.
+    @field_validator("api_key", "model", "name", mode="before")
+    @classmethod
+    def _strip_ws(cls, v):
+        return v.strip() if isinstance(v, str) else v
+
+
 
 
 
@@ -143,6 +153,11 @@ class TestProviderIn(BaseModel):
     provider_type: str
     api_key: str
     model: str = ""
+
+    @field_validator("api_key", "model", mode="before")
+    @classmethod
+    def _strip_ws(cls, v):
+        return v.strip() if isinstance(v, str) else v
 
 
 
@@ -1432,6 +1447,21 @@ def test_existing_provider(pid: int) -> Any:
         raise HTTPException(404, "provider not found")
     # Decrypt the API key before testing
     decrypted_key = crypto_mod.decrypt_api_key(row["api_key"])
+    # v8.18.4 FIX: decrypt_api_key silently returns the ciphertext when
+    # decryption fails (e.g. after a DB restore or password reset — the
+    # Fernet key is derived from password_hash). Sending that ciphertext
+    # to the provider is EXACTLY why users see 400/401 "invalid key"
+    # errors even though their API keys are perfectly valid. Detect it
+    # here and tell the user what to do instead of leaking it onward.
+    if decrypted_key.startswith("gAAAAA"):
+        return JSONResponse(
+            {"ok": False,
+             "error": "Stored key cannot be decrypted (password was reset or DB "
+                      "restored from another install). Click Edit, re-enter the "
+                      "same API key, and Save — that re-encrypts it correctly. "
+                      "This silent bad-key is why AI features return 400/401."},
+            status_code=502,
+        )
     try:
         result = extract.test_provider(row["provider_type"], decrypted_key, row["model"] or "")
         return result

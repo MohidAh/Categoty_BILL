@@ -523,13 +523,20 @@ def setup_wizard(payload: WizardIn, request: Request = None) -> Any:
                     "SELECT id FROM ai_providers WHERE name='gemini'"
                 ).fetchone()
                 if not existing:
+                    # v8.18.4 FIX: this INSERT referenced a column `active`
+                    # that does not exist (schema: provider_type/enabled) and
+                    # omitted the NOT NULL provider_type — so it ALWAYS threw
+                    # OperationalError, which the bare except below swallowed.
+                    # Result: the wizard's Gemini key never reached
+                    # ai_providers and bill extraction could not use it.
                     c.execute(
-                        "INSERT INTO ai_providers(name, api_key, active) VALUES('gemini', ?, 1)",
+                        "INSERT INTO ai_providers(name, provider_type, api_key, model, priority, enabled) "
+                        "VALUES('gemini', 'gemini', ?, 'gemini-2.5-flash', 0, 1)",
                         (encrypted_key,),
                     )
                 else:
                     c.execute(
-                        "UPDATE ai_providers SET api_key=?, active=1 WHERE name='gemini'",
+                        "UPDATE ai_providers SET api_key=?, enabled=1 WHERE name='gemini'",
                         (encrypted_key,),
                     )
         except Exception:

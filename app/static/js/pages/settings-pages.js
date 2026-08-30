@@ -217,7 +217,7 @@ route('/settings', async (el) => {
        <button class="btn btn-secondary" id="p-test-btn">${SVG.check} Test Connection</button>
        <button class="btn" id="p-save-btn">${SVG.save} Save</button>`);
     $('#p-test-btn').onclick = async () => {
-      const key = $('#p-key').value;
+      const key = $('#p-key').value.trim(); // v8.18.4: strip pasted whitespace
       const type = $('#p-type').value;
       const model = $('#p-model').value;
       if (!key) { toast('Enter an API key first', 'error'); return; }
@@ -232,7 +232,7 @@ route('/settings', async (el) => {
       }
     };
     $('#p-save-btn').onclick = async () => {
-      const key = $('#p-key').value;
+      const key = $('#p-key').value.trim(); // v8.18.4: strip pasted whitespace
       if (!key) { toast('API key required', 'error'); return; }
       const payload = {
         name: $('#p-name').value, provider_type: $('#p-type').value, api_key: key,

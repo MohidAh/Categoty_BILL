@@ -415,13 +415,18 @@ def get_shop_summary() -> str:
 def analyze_trends_with_ai(trends: list, shop_summary: str) -> list:
     """Use Groq to analyze trends and generate shop-specific suggestions."""
     import httpx
-    
+    from . import crypto as _crypto
+
     groq_key = None
     groq_model = "meta-llama/llama-4-scout-17b-16e-instruct"
     with conn() as c:
         row = c.execute("SELECT api_key, model FROM ai_providers WHERE provider_type='groq' AND enabled=1 ORDER BY priority LIMIT 1").fetchone()
         if row:
-            groq_key = row["api_key"]
+            # v8.18.4 FIX: keys in ai_providers are Fernet-encrypted since
+            # v8.5 — this path sent the raw ciphertext as the Bearer token,
+            # which Groq rejects with 401/403 even though the key itself is
+            # perfectly valid. Every other AI path decrypts; this one didn't.
+            groq_key = _crypto.decrypt_api_key(row["api_key"])
             if row["model"]:
                 groq_model = row["model"]
     if not groq_key:

@@ -40,6 +40,8 @@ import io
 import json
 import logging
 import os
+import threading
+import time
 import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -211,7 +213,50 @@ def _get_drive_service():
     # Refresh to get a fresh access_token (Google access_tokens expire after 1h)
     from google.auth.transport.requests import Request
     creds.refresh(Request())
-    return build("drive", "v3", credentials=creds, static_discovery=False)
+    import httplib2
+    http = httplib2.Http(timeout=DRIVE_HTTP_TIMEOUT_SECONDS)
+    return build("drive", "v3", credentials=creds, http=http, static_discovery=False)
+
+
+def _execute(request):
+    """Execute a Drive request with bounded retries for transient failures."""
+    last_error = None
+    for attempt in range(1, AUTO_IMPORT_RETRIES + 1):
+        try:
+            return request.execute()
+        except Exception as exc:
+            last_error = exc
+            if attempt == AUTO_IMPORT_RETRIES:
+                break
+            logger.warning("Google Drive request failed, retrying %d/%d: %s",
+                           attempt, AUTO_IMPORT_RETRIES, exc)
+            time.sleep(attempt)
+    raise last_error
+
+
+def _download_to_file(service, file_id: str, path: str) -> None:
+    """Stream a Drive file to disk, retrying interrupted downloads."""
+    from googleapiclient.http import MediaIoBaseDownload
+
+    last_error = None
+    for attempt in range(1, AUTO_IMPORT_RETRIES + 1):
+        try:
+            with open(path, "wb") as target:
+                downloader = MediaIoBaseDownload(
+                    target, service.files().get_media(fileId=file_id)
+                )
+                done = False
+                while not done:
+                    _, done = downloader.next_chunk()
+            return
+        except Exception as exc:
+            last_error = exc
+            if attempt == AUTO_IMPORT_RETRIES:
+                break
+            logger.warning("Google Drive download failed, retrying %d/%d: %s",
+                           attempt, AUTO_IMPORT_RETRIES, exc)
+            time.sleep(attempt)
+    raise last_error
 
 
 def _get_or_create_folder(service, name: str, setting_key: str) -> str:
@@ -224,17 +269,16 @@ def _get_or_create_folder(service, name: str, setting_key: str) -> str:
     if cached:
         return cached
     # Look for an existing folder with our name in the user's My Drive root.
-    results = service.files().list(
+    items = _execute(service.files().list(
         q=f"name='{name}' and mimeType='application/vnd.google-apps.folder' and trashed=false",
         spaces="drive",
         fields="files(id, name)",
-    ).execute()
-    items = results.get("files", [])
+    )).get("files", [])
     if items:
         folder_id = items[0]["id"]
     else:
         body = {"name": name, "mimeType": "application/vnd.google-apps.folder"}
-        created = service.files().create(body=body, fields="id").execute()
+        created = _execute(service.files().create(body=body, fields="id"))
         folder_id = created["id"]
     db.set_setting(setting_key, folder_id)
     return folder_id
@@ -283,9 +327,9 @@ def backup_now() -> dict:
     file_metadata = {"name": file_name, "parents": [folder_id]}
     from googleapiclient.http import MediaFileUpload
     media = MediaFileUpload(gzip_path, mimetype="application/gzip", resumable=True)
-    uploaded = service.files().create(
+    uploaded = _execute(service.files().create(
         body=file_metadata, media_body=media, fields="id, name"
-    ).execute()
+    ))
 
     # Step 4: update settings + clean local snapshot
     db.set_setting(
@@ -314,15 +358,15 @@ def _prune_old_backups(service, folder_id: str) -> int:
     cutoff = (datetime.utcnow() - timedelta(days=RETENTION_DAYS)).strftime(
         "%Y-%m-%dT%H:%M:%S"
     )
-    results = service.files().list(
+    results = _execute(service.files().list(
         q=f"'{folder_id}' in parents and modifiedTime < '{cutoff}' and trashed=false",
         spaces="drive",
         fields="files(id, name, modifiedTime)",
-    ).execute()
+    ))
     deleted = 0
     for f in results.get("files", []):
         try:
-            service.files().update(fileId=f["id"], body={"trashed": True}).execute()
+            _execute(service.files().update(fileId=f["id"], body={"trashed": True}))
             deleted += 1
             logger.info("Pruned old Drive backup %s (%s)", f["name"], f["modifiedTime"])
         except Exception as e:
@@ -346,33 +390,29 @@ def restore_test() -> dict:
     service = _get_drive_service()
     folder_id = _get_or_create_folder_id(service)
     # Find the newest .gz in the folder
-    results = service.files().list(
+    results = _execute(service.files().list(
         q=f"'{folder_id}' in parents and trashed=false",
         spaces="drive",
         orderBy="modifiedTime desc",
         pageSize=1,
         fields="files(id, name, modifiedTime)",
-    ).execute()
+    ))
     items = results.get("files", [])
     if not items:
         return {"ok": False, "error": "No backups in Drive yet"}
     latest = items[0]
-    # Download
-    # v8.18.0 FIX: request.stream() does not exist in googleapiclient — this
-    # used to throw AttributeError, which the scheduler swallowed, so the
-    # weekly restore-test silently never ran. MediaIoBaseDownload is the
-    # documented download API.
-    from googleapiclient.http import MediaIoBaseDownload
-    request = service.files().get_media(fileId=latest["id"])
-    buf = io.BytesIO()
-    downloader = MediaIoBaseDownload(buf, request)
-    done = False
-    while not done:
-        _, done = downloader.next_chunk()
-    buf.seek(0)
-    # Gunzip
+    # Download to disk to avoid buffering a large backup in RAM.
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".db.gz", delete=False) as download:
+        download_path = download.name
+    _download_to_file(service, latest["id"], download_path)
     import gzip
-    decompressed = gzip.decompress(buf.read())
+    with gzip.open(download_path, "rb") as source:
+        decompressed = source.read()
+    try:
+        os.unlink(download_path)
+    except Exception:
+        pass
     # Mount in a temp file
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
         tmp.write(decompressed)
@@ -456,6 +496,9 @@ AUTO_IMPORT_CHECK_INTERVAL_MIN = 15     # scheduler re-check cadence
 AUTO_IMPORT_MAX_FILE_MB = 100           # same cap as the manual upload page
 AUTO_IMPORT_MAX_FILES_PER_RUN = 5       # be gentle: a few per check
 AUTO_IMPORT_PROCESSED_KEEP = 200        # remembered file ids (rolling)
+AUTO_IMPORT_RETRIES = 3
+DRIVE_HTTP_TIMEOUT_SECONDS = 60
+_AUTO_IMPORT_LOCK = threading.Lock()
 
 
 def is_auto_import_enabled() -> bool:
@@ -520,7 +563,28 @@ def get_auto_import_status() -> dict:
     }
 
 
+def _move_to_processed(service, file_id: str, folder_id: str, name: str) -> None:
+    """Move a terminal auto-import file out of the watched folder."""
+    sub = _find_or_create_subfolder(service, folder_id, AUTO_IMPORT_PROCESSED_SUBFOLDER)
+    _execute(service.files().update(
+        fileId=file_id, addParents=sub, removeParents=folder_id, fields="id"
+    ))
+    logger.info("Drive auto-import moved %s to Processed", name)
+
+
 def check_and_import_new_backups(force: bool = False) -> dict:
+    """Run one auto-import pass; concurrent scheduler/UI calls are skipped."""
+    if not _AUTO_IMPORT_LOCK.acquire(blocking=False):
+        return {"ok": False, "checked": 0, "imported_files": 0,
+                "imported_sales": 0, "imported_expenses": 0,
+                "skipped_duplicates": 0, "errors": ["Auto-import already running"]}
+    try:
+        return _check_and_import_new_backups(force)
+    finally:
+        _AUTO_IMPORT_LOCK.release()
+
+
+def _check_and_import_new_backups(force: bool = False) -> dict:
     """Scan the watched Drive folder and import any new POS backup zips.
 
     Called by the scheduler every ~15 min and by the "Check Now" button
@@ -559,13 +623,13 @@ def check_and_import_new_backups(force: bool = False) -> dict:
             service, AUTO_IMPORT_FOLDER_NAME, "gdrive_autoimport_folder_id"
         )
         # List zips in the watched folder (newest first).
-        listing = service.files().list(
+        listing = _execute(service.files().list(
             q=f"'{folder_id}' in parents and trashed=false and name contains '.zip'",
             spaces="drive",
             orderBy="modifiedTime desc",
             pageSize=50,
             fields="files(id, name, size, modifiedTime)",
-        ).execute()
+        ))
         files = [
             f for f in listing.get("files", [])
             if (f.get("name") or "").lower().endswith(".zip")
@@ -584,6 +648,10 @@ def check_and_import_new_backups(force: bool = False) -> dict:
                         "error": f"too large ({size_mb:.1f} MB > {AUTO_IMPORT_MAX_FILE_MB} MB cap)",
                     }
                     result["errors"].append(f"{name}: too large, skipped")
+                    try:
+                        _move_to_processed(service, f["id"], folder_id, name)
+                    except Exception as move_err:
+                        logger.warning("Could not move terminal file %s: %s", name, move_err)
                     continue
                 # Download to a temp file (import_pos_backup takes a path).
                 # v8.18.0: MediaIoBaseDownload is the ONLY correct download
@@ -591,26 +659,25 @@ def check_and_import_new_backups(force: bool = False) -> dict:
                 # restore_test() does not exist in googleapiclient and
                 # throws AttributeError (fixed below).
                 import tempfile
-                from googleapiclient.http import MediaIoBaseDownload
-                request = service.files().get_media(fileId=f["id"])
-                buf = io.BytesIO()
-                downloader = MediaIoBaseDownload(buf, request)
-                done = False
-                while not done:
-                    _, done = downloader.next_chunk()
-                data = buf.getvalue()
+                with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+                    tmp_path = tmp.name
+                _download_to_file(service, f["id"], tmp_path)
+                with open(tmp_path, "rb") as source:
+                    magic = source.read(4)
                 # SECURITY: same magic-byte validation as the manual upload
                 # path (v8.13.1) — a Drive file named .zip must BE a zip.
-                if not data.startswith(b"PK\x03\x04") and not data.startswith(b"PK\x05\x06"):
+                if magic not in (b"PK\x03\x04", b"PK\x05\x06"):
                     processed[f["id"]] = {
                         "name": name, "at": now_s, "ok": False,
                         "error": "not a valid zip (bad magic bytes)",
                     }
                     result["errors"].append(f"{name}: not a valid zip")
+                    os.unlink(tmp_path)
+                    try:
+                        _move_to_processed(service, f["id"], folder_id, name)
+                    except Exception as move_err:
+                        logger.warning("Could not move terminal file %s: %s", name, move_err)
                     continue
-                with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
-                    tmp.write(data)
-                    tmp_path = tmp.name
                 try:
                     r = import_pos_backup(tmp_path)
                 finally:
@@ -641,10 +708,7 @@ def check_and_import_new_backups(force: bool = False) -> dict:
                 # Move to the "Processed" subfolder so the watched folder
                 # stays clean and humans can see what already ran.
                 try:
-                    sub = _find_or_create_subfolder(service, folder_id, AUTO_IMPORT_PROCESSED_SUBFOLDER)
-                    service.files().update(
-                        fileId=f["id"], addParents=sub, removeParents=folder_id, fields="id"
-                    ).execute()
+                    _move_to_processed(service, f["id"], folder_id, name)
                 except Exception as move_err:
                     # Non-fatal: file stays in place but is tracked above.
                     logger.warning("Drive auto-import: could not move %s: %s", name, move_err)
@@ -654,6 +718,10 @@ def check_and_import_new_backups(force: bool = False) -> dict:
                 }
                 result["errors"].append(f"{name}: {str(e)[:120]}")
                 logger.warning("Drive auto-import failed for %s: %s", name, e)
+                try:
+                    _move_to_processed(service, f["id"], folder_id, name)
+                except Exception as move_err:
+                    logger.warning("Could not move terminal file %s: %s", name, move_err)
 
         _set_processed_files(processed)
         db.set_setting("gdrive_autoimport_last_check", now_s)
@@ -679,11 +747,11 @@ def check_and_import_new_backups(force: bool = False) -> dict:
 
 def _find_or_create_subfolder(service, parent_id: str, name: str) -> str:
     """Find a child folder by name (or create it) inside parent_id."""
-    results = service.files().list(
+    results = _execute(service.files().list(
         q=f"'{parent_id}' in parents and name='{name}' and mimeType='application/vnd.google-apps.folder' and trashed=false",
         spaces="drive",
         fields="files(id, name)",
-    ).execute()
+    ))
     items = results.get("files", [])
     if items:
         return items[0]["id"]
@@ -692,5 +760,5 @@ def _find_or_create_subfolder(service, parent_id: str, name: str) -> str:
         "mimeType": "application/vnd.google-apps.folder",
         "parents": [parent_id],
     }
-    created = service.files().create(body=body, fields="id").execute()
+    created = _execute(service.files().create(body=body, fields="id"))
     return created["id"]

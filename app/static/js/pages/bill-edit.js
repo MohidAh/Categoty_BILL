@@ -41,7 +41,7 @@ route('/bills/', async (el, path) => {
 
     ${b.flags.length ? b.flags.map(f => `<div class="alert alert-warning mb-2">${iconHtml('alert', 'alert-icon')}<div>${esc(f)}</div></div>`).join('') : (b.status === 'confirmed' ? `<div class="alert alert-success mb-2">${iconHtml('check', 'alert-icon')}<div>All checks passed — bill is confirmed.</div></div>` : '')}
 
-    <div class="bill-edit">
+    <div class="bill-edit" id="bill-edit-grid">
       <div class="bill-images-panel">
         ${b.pages.length ? `
           <div class="bill-images-toolbar">
@@ -50,7 +50,8 @@ route('/bills/', async (el, path) => {
             <button class="btn btn-ghost btn-sm btn-icon" id="img-zoom-in" title="Zoom in">+</button>
             <button class="btn btn-ghost btn-sm btn-icon" id="img-rotate-left" title="Rotate left">↺</button>
             <button class="btn btn-ghost btn-sm btn-icon" id="img-rotate-right" title="Rotate right">↻</button>
-            <button class="btn btn-ghost btn-sm" id="img-reset" title="Reset">Fit</button>
+            <button class="btn btn-ghost btn-sm" id="img-reset" title="Reset zoom & rotation">Fit</button>
+            <button class="btn btn-ghost btn-sm btn-icon" id="img-pos-btn" title="Change image panel position">⇄</button>
             <span class="bill-images-count">${b.pages.length} page${b.pages.length > 1 ? 's' : ''}</span>
           </div>
           <div class="bill-images" id="bill-images-container">
@@ -58,6 +59,7 @@ route('/bills/', async (el, path) => {
           </div>` :
           `<div class="bill-images-empty">${icon('image', 28)}<p>No images uploaded yet.<br>Click "Add Images" to attach bill photos.</p></div>`}
       </div>
+      <div class="bill-resize-handle" id="bill-resize-handle" role="separator" aria-orientation="vertical" tabindex="0" title="Drag to resize the image panel (wider images = narrower table). Double-click to reset layout."><span class="bill-resize-grip"></span></div>
       <div class="bill-form-section">
         <div class="card">
           <h3>Bill Details</h3>
@@ -538,6 +540,169 @@ route('/bills/', async (el, path) => {
   // should work. We removed the JS fallback that was causing issues.
   // CSS sticky sticks relative to the nearest scroll ancestor (.shell-content).
   // No JS needed — the CSS in pages.css handles it.
+
+  // ---- v8.18.5: Image panel layout — drag to resize + reposition ----
+  // The user can now:
+  //   • DRAG the divider between the images and the table: dragging right
+  //     makes the bill images wider and the items table narrower (and vice
+  //     versa). In Top/Bottom layouts it adjusts the image panel height.
+  //   • Click the ⇄ toolbar button to move the images Left / Right / Top /
+  //     Bottom of the page.
+  //   • Double-click the divider (or press R while focused on it) to reset.
+  // The choice persists in localStorage across sessions.
+  const LAYOUT_KEY = 'bb.billImagesLayout';
+  const LAYOUT_DEFAULTS = { pos: 'left', widthPct: 43, heightPx: 320 };
+  let imgLayout = { ...LAYOUT_DEFAULTS };
+  try {
+    Object.assign(imgLayout, JSON.parse(localStorage.getItem(LAYOUT_KEY) || '{}'));
+  } catch { /* corrupted value — fall back to defaults */ }
+
+  const gridEl = $('#bill-edit-grid');
+  const handleEl = $('#bill-resize-handle');
+
+  function clampLayout() {
+    imgLayout.widthPct = Math.min(72, Math.max(18, +imgLayout.widthPct || LAYOUT_DEFAULTS.widthPct));
+    imgLayout.heightPx = Math.min(760, Math.max(140, +imgLayout.heightPx || LAYOUT_DEFAULTS.heightPx));
+    if (!['left', 'right', 'top', 'bottom'].includes(imgLayout.pos)) imgLayout.pos = 'left';
+  }
+
+  function applyImgLayout() {
+    if (!gridEl) return;
+    clampLayout();
+    ['img-left', 'img-right', 'img-top', 'img-bottom'].forEach(c => gridEl.classList.remove(c));
+    gridEl.classList.add('img-' + imgLayout.pos);
+    gridEl.style.setProperty('--img-w', imgLayout.widthPct + '%');
+    gridEl.style.setProperty('--img-h', imgLayout.heightPx + 'px');
+    const vertical = imgLayout.pos === 'top' || imgLayout.pos === 'bottom';
+    if (handleEl) handleEl.setAttribute('aria-orientation', vertical ? 'horizontal' : 'vertical');
+    const posBtn = $('#img-pos-btn');
+    if (posBtn) {
+      const labels = { left: 'Images on left', right: 'Images on right', top: 'Images on top', bottom: 'Images on bottom' };
+      posBtn.title = `Image panel position: ${labels[imgLayout.pos]} — click to change`;
+    }
+  }
+
+  function saveImgLayout() {
+    try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(imgLayout)); } catch { }
+  }
+
+  applyImgLayout();
+
+  // Position menu (⇄ button) — small popover with the 4 layout options
+  const posBtn = $('#img-pos-btn');
+  if (posBtn) {
+    posBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.querySelectorAll('.img-pos-menu').forEach(m => m.remove());
+      const menu = document.createElement('div');
+      menu.className = 'img-pos-menu';
+      const opts = [
+        ['left', '◧ Images on Left'],
+        ['right', '◨ Images on Right'],
+        ['top', '⬓ Images on Top'],
+        ['bottom', '⬔ Images on Bottom'],
+      ];
+      menu.innerHTML = opts.map(([p, label]) =>
+        `<button data-pos="${p}" class="${imgLayout.pos === p ? 'active' : ''}">${label}</button>`
+      ).join('');
+      const rect = posBtn.getBoundingClientRect();
+      menu.style.top = (rect.bottom + 6) + 'px';
+      // Keep the menu on-screen when the panel is narrow
+      menu.style.left = Math.min(window.innerWidth - 170, Math.max(8, rect.left - 110)) + 'px';
+      // Append INSIDE the toolbar (position:fixed places it by viewport
+      // coordinates) so a route change destroys it with the page — no orphan
+      // menus floating over the next page.
+      posBtn.closest('.bill-images-toolbar')?.appendChild(menu) || document.body.appendChild(menu);
+      menu.querySelector('button').focus();
+      const close = () => {
+        menu.remove();
+        document.removeEventListener('click', onDoc);
+        menu.removeEventListener('keydown', onKey);
+        posBtn.focus();
+      };
+      // Escape closes the menu WITHOUT triggering the page's Escape→back
+      // navigation (stopPropagation stops the document-level handler).
+      const onKey = (ev) => {
+        if (ev.key === 'Escape') { ev.stopPropagation(); close(); }
+      };
+      menu.addEventListener('keydown', onKey);
+      menu.addEventListener('click', (ev) => {
+        const b = ev.target.closest('[data-pos]');
+        if (!b) return;
+        imgLayout.pos = b.dataset.pos;
+        saveImgLayout();
+        applyImgLayout();
+        close();
+      });
+      const onDoc = (ev) => { if (!menu.contains(ev.target) && ev.target !== posBtn) close(); };
+      setTimeout(() => document.addEventListener('click', onDoc), 0);
+    });
+  }
+
+  // Drag the divider to resize (pointer events cover mouse + touch)
+  if (handleEl) {
+    handleEl.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      handleEl.setPointerCapture(e.pointerId);
+      handleEl.classList.add('dragging');
+      document.body.classList.add('bill-resizing');
+      const rect = gridEl.getBoundingClientRect();
+      const startX = e.clientX, startY = e.clientY;
+      const startW = imgLayout.widthPct, startH = imgLayout.heightPx;
+      const vertical = imgLayout.pos === 'top' || imgLayout.pos === 'bottom';
+
+      const onMove = (ev) => {
+        if (vertical) {
+          let dh = ev.clientY - startY;
+          if (imgLayout.pos === 'bottom') dh = -dh; // panel is below — drag up to grow
+          imgLayout.heightPx = startH + dh;
+        } else {
+          let dw = ((ev.clientX - startX) / rect.width) * 100;
+          if (imgLayout.pos === 'right') dw = -dw; // panel is on the right — drag left to grow
+          imgLayout.widthPct = startW + dw;
+        }
+        applyImgLayout(); // live preview (clamps inside)
+      };
+      const onUp = () => {
+        handleEl.removeEventListener('pointermove', onMove);
+        handleEl.removeEventListener('pointerup', onUp);
+        handleEl.removeEventListener('pointercancel', onUp);
+        handleEl.classList.remove('dragging');
+        document.body.classList.remove('bill-resizing');
+        clampLayout();
+        saveImgLayout();
+      };
+      handleEl.addEventListener('pointermove', onMove);
+      handleEl.addEventListener('pointerup', onUp);
+      handleEl.addEventListener('pointercancel', onUp);
+    });
+
+    // Double-click resets the layout to defaults
+    handleEl.addEventListener('dblclick', () => {
+      imgLayout = { ...LAYOUT_DEFAULTS };
+      saveImgLayout();
+      applyImgLayout();
+      toast('Image panel layout reset', 'info');
+    });
+
+    // Keyboard: arrows nudge size, Home resets
+    handleEl.addEventListener('keydown', (e) => {
+      const vertical = imgLayout.pos === 'top' || imgLayout.pos === 'bottom';
+      let handled = true;
+      if (e.key === 'ArrowLeft' && !vertical) imgLayout.widthPct -= (e.shiftKey ? 10 : 2);
+      else if (e.key === 'ArrowRight' && !vertical) imgLayout.widthPct += (e.shiftKey ? 10 : 2);
+      else if (e.key === 'ArrowUp' && vertical) imgLayout.heightPx -= (e.shiftKey ? 100 : 20);
+      else if (e.key === 'ArrowDown' && vertical) imgLayout.heightPx += (e.shiftKey ? 100 : 20);
+      else if (e.key === 'Home' || e.key === 'r' || e.key === 'R') imgLayout = { ...LAYOUT_DEFAULTS };
+      else handled = false;
+      if (handled) {
+        e.preventDefault();
+        clampLayout();
+        saveImgLayout();
+        applyImgLayout();
+      }
+    });
+  }
 
   // ---- Verification checkboxes ----
 

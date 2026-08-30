@@ -4,7 +4,7 @@
 // import-time execution doesn't crash the module chain.
 import { $, $$, esc, fmt, fmtRs, toast, showLoading, hideLoading, openModal, closeModal, icon } from '../../../utils.js';
 import { api, apiPost, apiPut, apiDelete, apiUpload } from '../../../api.js';
-import { navigate } from '../../../router.js';
+import { navigate, reload } from '../../../router.js';
 
 window.__initBillEditExtras = function(id, itemsBody) {
   try {
@@ -378,7 +378,11 @@ window.__initBillEditExtras = function(id, itemsBody) {
     });
   });
 
-  // Add images button
+  // Add images button — v8.18.5: now an async job (render → AI-extract → merge
+  // items into this bill). Live progress streams in a modal. On finish we
+  // RELOAD the route — the old code called navigate() to the SAME hash, which
+  // doesn't fire hashchange, so the page never re-rendered and the new image
+  // (and its items) never appeared on screen.
   $('#add-pages-btn').addEventListener('click', () => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -386,18 +390,112 @@ window.__initBillEditExtras = function(id, itemsBody) {
     input.accept = '.pdf,.png,.jpg,.jpeg,.webp';
     input.onchange = async () => {
       if (!input.files.length) return;
-      showLoading('Adding images...');
+      const nFiles = input.files.length;
       const fd = new FormData();
       for (const f of input.files) fd.append('files', f);
+
+      openModal(`Adding ${nFiles} file${nFiles > 1 ? 's' : ''} to Bill #${id}`, `
+        <p class="text-sm text-dim" style="margin-top:0">New pages are rendered, read by AI, and their items merged into this bill. This can take a minute — keep this window open.</p>
+        <div class="progress-container mt-3">
+          <div class="progress-bar-wrap">
+            <div class="progress-bar" id="ap-progress-bar" style="width:2%"></div>
+          </div>
+          <div class="flex justify-between mt-2 text-sm">
+            <span id="ap-progress-stage" class="text-dim">Uploading…</span>
+            <span id="ap-progress-pct" class="font-semibold">0%</span>
+          </div>
+        </div>
+        <div class="mt-3">
+          <div class="text-xs text-dim mb-2">Activity</div>
+          <div id="ap-event-log" class="event-log" style="max-height:180px"></div>
+        </div>`,
+        `<button class="btn btn-secondary" data-modal-close>Close</button>`);
+
+      let jobId = null;
       try {
         const r = await apiUpload(`/api/bills/${id}/add-pages`, fd);
-        hideLoading();
-        toast(`Added ${r.added} page(s)`, 'success');
-        navigate('/bills/' + id);
+        jobId = r.job_id;
       } catch (e) {
-        hideLoading();
+        closeModal();
         toast('Failed: ' + e.message, 'error');
+        return;
       }
+
+      const setStage = (msg, pct) => {
+        const bar = $('#ap-progress-bar');
+        const stage = $('#ap-progress-stage');
+        const pctEl = $('#ap-progress-pct');
+        if (bar && pct != null) bar.style.width = pct + '%';
+        if (pctEl && pct != null) pctEl.textContent = pct + '%';
+        if (stage && msg) stage.textContent = msg;
+      };
+      const logEvent = (msg, level) => {
+        const log = $('#ap-event-log');
+        if (!log) return;
+        const color = level === 'error' ? 'text-danger' : level === 'warning' ? 'text-warning'
+          : level === 'success' ? 'text-success' : 'text-dim';
+        const ts = new Date().toLocaleTimeString();
+        log.insertAdjacentHTML('afterbegin',
+          `<div class="event-row ${color}"><span class="event-ts">${ts}</span><span class="event-msg">${esc(msg)}</span></div>`);
+      };
+
+      let finished = false;
+      let es = null;
+      // Reload the bill so the new images + extracted items appear.
+      // If the user closed the progress modal early and stayed on the page,
+      // DON'T force a reload (it would wipe their in-progress edits) — offer
+      // a "Refresh" action on the toast instead.
+      const finish = (ok, message) => {
+        if (finished) return;
+        finished = true;
+        if (es) es.close();
+        const stillOnModal = !!$('#ap-progress-bar');
+        const stillOnBill = location.hash.startsWith('#/bills/' + id);
+        closeModal();
+        if (stillOnModal) {
+          toast(message, ok ? 'success' : 'error');
+          if (ok) reload();
+        } else if (stillOnBill) {
+          toast(message + ' — refresh to see them', ok ? 'success' : 'error', {
+            duration: 10000,
+            action: { label: 'Refresh', onClick: () => reload() },
+          });
+        } else {
+          toast(message, ok ? 'success' : 'error');
+        }
+      };
+
+      es = new EventSource(`/api/jobs/${jobId}/stream`);
+      es.onmessage = (e) => {
+        const d = JSON.parse(e.data);
+        if (d.terminal) {
+          if (d.status === 'done') {
+            const r = d.result || {};
+            const nItems = r.items_extracted || 0;
+            finish(true, `Added ${r.added_pages || 0} page(s)` +
+              (nItems ? `, extracted ${nItems} item(s)` : ', no items extracted'));
+          } else {
+            finish(false, 'Adding pages failed: ' + (d.error || 'unknown error'));
+          }
+          return;
+        }
+        setStage(d.message || d.stage, d.progress);
+        logEvent(d.message || d.stage, d.level);
+      };
+      es.onerror = () => {
+        // SSE dropped — poll the job status as a fallback (same pattern as
+        // the new-bill upload page).
+        if (finished) return;
+        setTimeout(async () => {
+          if (finished) return;
+          try {
+            const job = await api(`/api/jobs/${jobId}`);
+            if (job.status === 'done' || job.status === 'error') {
+              es.onmessage({ data: JSON.stringify({ terminal: true, status: job.status, result: job.result, error: job.error }) });
+            }
+          } catch {}
+        }, 3000);
+      };
     };
     input.click();
   });

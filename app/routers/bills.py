@@ -556,37 +556,230 @@ async def stream_job(job_id: str, request: Request):
 
 
 @router.post("/api/bills/{bill_id}/add-pages")
-async def add_pages(bill_id: int, files: list[UploadFile] = File(...)):
-    """Add more images to an existing bill."""
+async def add_pages(request: Request, bill_id: int, files: list[UploadFile] = File(...)):
+    """Add more images to an existing bill, then AI-extract their items.
+
+    v8.18.5 FIX (user report: "on edit bill when user adds an image it doesn't
+    add and its items are not extracted"):
+      1. The old handler only saved the rendered pages — it NEVER called the
+         AI extractor, so no bill_items rows were created for the new pages.
+      2. Page numbers collided: every rendered page of file i got
+         page_no = existing_max + i + 1 (file index, not page counter), so a
+         multi-page PDF collapsed onto a single page number.
+      3. It was synchronous with no progress feedback and the frontend
+         re-navigated to the SAME hash (which doesn't re-render), so the new
+         image never appeared on screen.
+
+    Now an async job (same pattern as /api/upload-async): renders pages with a
+    running counter, extracts ONLY the new pages, merges items into the bill
+    (page numbers offset past the existing pages), and streams progress.
+    Returns {job_id, bill_id}; stream GET /api/jobs/{job_id}/stream.
+    """
+    # Early Content-Length check — reject before loading into memory
+    content_length = int(request.headers.get("content-length", 0))
+    if content_length > MAX_UPLOAD_BYTES * MAX_FILES + 10 * 1024 * 1024:
+        raise HTTPException(413, f"Request too large (max {MAX_UPLOAD_BYTES * MAX_FILES // (1024*1024)}MB total)")
     _validate_upload(files)
-    existing_max = 0
+
     with db.conn() as c:
+        if not c.execute(
+            "SELECT 1 FROM bills WHERE id=? AND deleted_at IS NULL", (bill_id,)
+        ).fetchone():
+            raise HTTPException(404, "bill not found")
         row = c.execute(
             "SELECT MAX(page_no) AS m FROM bill_pages WHERE bill_id=?", (bill_id,)
         ).fetchone()
-        existing_max = row["m"] or 0
-        if not c.execute("SELECT 1 FROM bills WHERE id=?", (bill_id,)).fetchone():
-            raise HTTPException(404, "bill not found")
+    existing_max = row["m"] or 0
 
-    added = 0
-    for i, f in enumerate(files):
-        data = await f.read()
+    # Read all file bytes upfront (UploadFile streams close after the request)
+    file_data = []
+    for f in files:
+        data = await f.read(MAX_UPLOAD_BYTES + 1)
         if len(data) > MAX_UPLOAD_BYTES:
-            raise HTTPException(413, f"File too large: {f.filename}")
-        saved = save_upload(data, f.filename or "upload", UPLOADS)
-        for p in render_pages(saved, PAGES, stem_prefix=saved.stem):
-            with db.conn() as c:
-                c.execute(
-                    "INSERT INTO bill_pages(bill_id, filename, page_no) VALUES(?,?,?)",
-                    (bill_id, p.name, existing_max + i + 1),
-                )
-            added += 1
-        # v8.2.3: Delete the original uploaded file — we only need the rendered pages
+            raise HTTPException(413, f"File too large: {f.filename} (max {MAX_UPLOAD_BYTES // (1024*1024)}MB)")
+        _validate_magic_bytes(data, f.filename or "upload")
+        file_data.append({"name": f.filename or "upload", "data": data})
+
+    job = jobs_mod.create_job("add-pages", bill_id=bill_id)
+    job.emit("queued", f"Adding {len(file_data)} file(s) to bill #{bill_id}...", progress=5)
+    asyncio.create_task(_run_add_pages_job(job, bill_id, file_data, existing_max))
+    return {"job_id": job.id, "bill_id": bill_id}
+
+
+async def _run_add_pages_job(job: jobs_mod.Job, bill_id: int,
+                             file_data: list[dict], existing_max: int):
+    """Background job for add-pages: render pages → AI-extract the NEW pages
+    only → merge items + bill fields into the existing bill.
+
+    Catches all errors so the job always terminates in 'done' or 'error'.
+    """
+    added_pages = 0
+    try:
+        job.status = "running"
+
+        # --- Phase 1: render pages with a RUNNING page counter ---
+        job.emit("uploading", "Saving and rendering pages...", progress=10)
+        new_pages = []
+        page_no = existing_max
+        for fi, f in enumerate(file_data):
+            saved = save_upload(f["data"], f["name"], UPLOADS)
+            job.emit("rendering", f"Rendering {f['name']}...",
+                     progress=10 + int(15 * fi / max(len(file_data), 1)))
+
+            def _render():
+                return render_pages(saved, PAGES, stem_prefix=saved.stem)
+            pages = await asyncio.to_thread(_render)
+            for p in pages:
+                page_no += 1
+                with db.conn() as c:
+                    c.execute(
+                        "INSERT INTO bill_pages(bill_id, filename, page_no) VALUES(?,?,?)",
+                        (bill_id, p.name, page_no),
+                    )
+                new_pages.append(p)
+            added_pages += len(pages)
+            # v8.2.3: Delete the original uploaded file — only rendered pages matter
+            try:
+                saved.unlink(missing_ok=True)
+            except Exception as _e:
+                logger.warning("Silent exception in bills.py: %s", _e, exc_info=True)
+            job.emit("rendering", f"Rendered {len(pages)} page(s) from {f['name']} "
+                     f"({page_no} total pages on this bill)",
+                     progress=10 + int(25 * (fi + 1) / max(len(file_data), 1)))
+
+        if not new_pages:
+            raise RuntimeError("No pages were rendered from the uploaded files")
+
+        # --- Phase 2: AI extraction on ONLY the new pages ---
+        job.emit("extracting", f"Extracting {len(new_pages)} new page(s) with AI...", progress=40)
+        ex, provider = None, None
+        new_flags: list[str] = []
+        items: list[dict] = []
         try:
-            saved.unlink(missing_ok=True)
-        except Exception as _e:
-            logger.warning("Silent exception in bills.py: %s", _e, exc_info=True)
-    return {"added": added}
+            def _extract():
+                def on_progress(chunk_label, chunk_idx, total_chunks):
+                    pct = 40 + int(35 * (chunk_idx - 1) / max(total_chunks, 1))
+                    job.emit("extracting", f"Extracting {chunk_label} ({chunk_idx}/{total_chunks})...",
+                             progress=pct)
+                return extract.extract(new_pages, on_progress=on_progress)
+            ex, provider = await asyncio.to_thread(_extract)
+            v = validate(ex)
+            items = v["items"]
+            new_flags = v["flags"]
+        except Exception as e:
+            # Extraction failure is NOT fatal — pages are already saved; the
+            # user can enter the items manually on the edit page.
+            job.emit("extracting", f"AI extraction failed: {e} — pages added, enter items manually",
+                     level="warning")
+            new_flags = [f"AI extraction failed for added pages: {e} — manual entry needed"]
+
+        # --- Phase 3: merge items into the existing bill ---
+        job.emit("saving", "Merging extracted items into the bill...", progress=85)
+        extracted_count = 0
+        with db.conn() as c:
+            # Category matcher (same rules as the upload flow)
+            all_cats = [dict(r) for r in c.execute(
+                "SELECT id, sell_price FROM price_categories WHERE active=1 ORDER BY sell_price ASC"
+            ).fetchall()]
+            default_cat_id = None
+            cat_row = c.execute(
+                "SELECT id FROM price_categories WHERE sell_price=250 AND active=1 LIMIT 1"
+            ).fetchone()
+            if cat_row:
+                default_cat_id = cat_row["id"]
+
+            def match_category(sell_price):
+                if not sell_price or sell_price <= 0:
+                    return default_cat_id
+                for cat in all_cats:
+                    if abs(cat["sell_price"] - sell_price) < 1:
+                        return cat["id"]
+                closest, min_diff = None, float("inf")
+                for cat in all_cats:
+                    diff = abs(cat["sell_price"] - sell_price)
+                    if diff < min_diff:
+                        min_diff, closest = diff, cat["id"]
+                return closest
+
+            for it in items:
+                # Items from the new batch reference page 1..N of the batch —
+                # shift them past the bill's existing pages so "View image"
+                # jumps to the right page.
+                it_page = (it.get("page_no") or 1) + existing_max
+                cat_id = match_category(it.get("sell_price"))
+                c.execute(
+                    "INSERT INTO bill_items(bill_id, raw, price, qty, unit, line_total, confidence, "
+                    "sell_price, category_id, page_no) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    (bill_id, it["raw"], it["price"], it["qty"], it["unit"],
+                     it["line_total"], it.get("confidence"), it.get("sell_price"),
+                     cat_id, it_page),
+                )
+                extracted_count += 1
+
+            # Merge bill-level fields — NEVER overwrite what the user already
+            # has (they may have edited supplier/date/total on this bill).
+            bill = c.execute(
+                "SELECT supplier_name, phone, bill_date, written_total, flags, provider "
+                "FROM bills WHERE id=?", (bill_id,)
+            ).fetchone()
+            if bill:
+                try:
+                    old_flags = json.loads(bill["flags"] or "[]")
+                except Exception:
+                    old_flags = []
+                summary = f"Added {added_pages} page(s)"
+                if extracted_count:
+                    summary += f" — {extracted_count} item(s) extracted via {provider}"
+                else:
+                    summary += " — no items extracted, enter them manually"
+                merged_flags = old_flags + new_flags + [summary]
+                # Recompute the computed total across ALL items (old + new)
+                row = c.execute(
+                    "SELECT COALESCE(SUM(line_total), 0) AS t FROM bill_items WHERE bill_id=?",
+                    (bill_id,),
+                ).fetchone()
+                c.execute(
+                    "UPDATE bills SET "
+                    "supplier_name=COALESCE(NULLIF(supplier_name,''),?), "
+                    "phone=COALESCE(NULLIF(phone,''),?), "
+                    "bill_date=COALESCE(bill_date,?), "
+                    "written_total=COALESCE(written_total,?), "
+                    "computed_total=?, status='review', flags=?, "
+                    "provider=COALESCE(provider,?) WHERE id=?",
+                    (
+                        (ex or {}).get("supplier_guess") or "",
+                        (ex or {}).get("phone") or "",
+                        (ex or {}).get("bill_date"),
+                        (ex or {}).get("written_total"),
+                        row["t"],
+                        json.dumps(merged_flags),
+                        provider,
+                        bill_id,
+                    ),
+                )
+
+        job.result = {
+            "bill_id": bill_id,
+            "added_pages": added_pages,
+            "items_extracted": extracted_count,
+            "provider": provider,
+        }
+        job.status = "done"
+        job.emit("done", f"Done! {added_pages} page(s) added, {extracted_count} item(s) extracted.",
+                 level="success", progress=100)
+        db.log_activity(
+            "bill_pages_added", "bill", bill_id,
+            f"Added {added_pages} page(s) to bill #{bill_id} ({extracted_count} item(s) extracted)",
+            {"added_pages": added_pages, "items_extracted": extracted_count,
+             "provider": provider},
+        )
+    except Exception as e:
+        job.status = "error"
+        job.error = str(e)
+        job.emit("error", f"Failed to add pages: {e} "
+                 f"({added_pages} page(s) were added before the failure)",
+                 level="error", progress=100)
+        traceback.print_exc()
 
 
 # ------------------------------------------------------------------

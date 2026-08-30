@@ -43,7 +43,23 @@
 /* v8.5.4: align-items:start is CRITICAL for position:sticky to work in a grid.
    Without it, the grid item stretches to fill the row height (matching the
    taller right column), leaving no room to "stick" within the scroll. */
-.bill-edit { display: grid; grid-template-columns: 1fr 1.3fr; gap: var(--space-5); align-items: start; }
+/* v8.18.5: 3-column grid — images | drag handle | items table. The images
+   column width is --img-w (set inline by bill-edit.js from the saved layout);
+   drag the handle to grow the images and shrink the table. */
+.bill-edit {
+  display: grid;
+  grid-template-columns: var(--img-w, 43%) 6px 1fr;
+  gap: var(--space-5);
+  align-items: start;
+}
+/* v8.18.5 FIX: grid items default to min-width:auto (their content's
+   min-content). The items table's min-content is ~1100px, so the 1fr track
+   could never shrink — the whole grid overflowed the shell by ~550px and the
+   page scrolled sideways (pushing the images panel under the sidebar).
+   min-width:0 lets the track shrink; the table scrolls inside its own
+   .table-wrap (overflow-x:auto) as designed. */
+.bill-edit > .bill-images-panel,
+.bill-edit > .bill-form-section { min-width: 0; }
 
 /* v8.5.4: Prevent number inputs from incrementing on mouse scroll.
    This is annoying behavior that causes accidental value changes. */
@@ -73,6 +89,7 @@
   border-bottom: none;
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   flex-shrink: 0;
+  flex-wrap: wrap; /* v8.18.5: position button added — allow wrap on narrow panels */
 }
 .bill-images-toolbar .btn {
   width: 26px;
@@ -126,6 +143,110 @@
 .bill-images-empty p { font-size: 12px; margin: 0; }
 
 .bill-form-section { display: flex; flex-direction: column; gap: var(--space-4); }
+
+/* ---------- v8.18.5: Image panel resize handle + position layouts ---------- */
+/* The divider between the images panel and the items table. Drag to resize:
+   wider images = narrower table (Left/Right layouts) or taller/shorter image
+   strip (Top/Bottom layouts). Double-click resets the layout. */
+.bill-resize-handle {
+  align-self: stretch;
+  cursor: col-resize;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;             /* let pointer events own touch drags */
+  border-radius: 3px;
+  outline: none;
+  padding: 0 4px;                 /* widen the hit area into the grid gap */
+  margin: 0 -2px;
+}
+.bill-resize-grip {
+  width: 4px;
+  height: 42px;
+  border-radius: 3px;
+  background: var(--border-strong);
+  transition: background 0.15s var(--ease), height 0.15s var(--ease);
+}
+.bill-resize-handle:hover .bill-resize-grip,
+.bill-resize-handle:focus-visible .bill-resize-grip,
+.bill-resize-handle.dragging .bill-resize-grip {
+  background: var(--accent);
+  height: 72px;
+}
+.bill-resize-handle:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
+
+/* Images on the RIGHT — same 3 columns, reversed via order */
+.bill-edit.img-right { grid-template-columns: 1fr 6px var(--img-w, 43%); }
+.bill-edit.img-right .bill-images-panel { order: 3; }
+.bill-edit.img-right .bill-resize-handle   { order: 2; }
+.bill-edit.img-right .bill-form-section   { order: 1; }
+
+/* Images ABOVE / BELOW the table — single column; --img-h caps the panel */
+.bill-edit.img-top,
+.bill-edit.img-bottom { grid-template-columns: 1fr; }
+.bill-edit.img-bottom .bill-form-section   { order: 1; }
+.bill-edit.img-bottom .bill-resize-handle  { order: 2; }
+.bill-edit.img-bottom .bill-images-panel   { order: 3; }
+.bill-edit.img-top .bill-images-panel,
+.bill-edit.img-bottom .bill-images-panel { max-height: var(--img-h, 320px); }
+/* Pin the bottom panel to the viewport bottom while scrolling the table */
+.bill-edit.img-bottom .bill-images-panel { position: sticky; bottom: 0; top: auto; }
+
+/* Horizontal handle in stacked (Top/Bottom) layouts */
+.bill-edit.img-top .bill-resize-handle,
+.bill-edit.img-bottom .bill-resize-handle {
+  cursor: row-resize;
+  padding: 5px 0;
+  margin: -2px 0;
+}
+.bill-edit.img-top .bill-resize-grip,
+.bill-edit.img-bottom .bill-resize-grip { width: 48px; height: 4px; }
+.bill-edit.img-top .bill-resize-handle:hover .bill-resize-grip,
+.bill-edit.img-top .bill-resize-handle:focus-visible .bill-resize-grip,
+.bill-edit.img-top .bill-resize-handle.dragging .bill-resize-grip,
+.bill-edit.img-bottom .bill-resize-handle:hover .bill-resize-grip,
+.bill-edit.img-bottom .bill-resize-handle:focus-visible .bill-resize-grip,
+.bill-edit.img-bottom .bill-resize-handle.dragging .bill-resize-grip {
+  width: 72px;
+  height: 4px;
+}
+
+/* While dragging: kill text selection so the drag feels solid */
+body.bill-resizing { user-select: none; -webkit-user-select: none; cursor: col-resize; }
+body.bill-resizing * { cursor: inherit !important; }
+
+/* Position menu (⇄ toolbar button) */
+.img-pos-menu {
+  position: fixed;
+  z-index: 300;
+  min-width: 168px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-lg);
+}
+.img-pos-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  font-family: inherit;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.img-pos-menu button:hover { background: var(--bg-hover); color: var(--text-primary); }
+.img-pos-menu button.active {
+  background: var(--bg-hover);
+  color: var(--accent-text);
+  font-weight: 600;
+}
 
 /* ---- Billwise master-detail (v8.5.3) ---- */
 .bw-bill-row { transition: background 0.15s var(--ease); }
@@ -396,8 +517,13 @@
 
 /* ---------- Responsive bill edit ---------- */
 @media (max-width: 1024px) {
+  /* Stacked single column — the drag handle makes no sense here */
   .bill-edit { grid-template-columns: 1fr; }
+  .bill-resize-handle { display: none; }
   .bill-images { max-height: 400px; }
+  /* On phones the panel height follows the global cap, not --img-h */
+  .bill-edit.img-top .bill-images-panel,
+  .bill-edit.img-bottom .bill-images-panel { max-height: 400px; }
 }
 
 /* ---------- Items toolbar (search + summary + buttons) ---------- */

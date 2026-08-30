@@ -44,6 +44,7 @@ import './pages/audit-report-page.js';
 import './pages/pos-import-sync-page.js';
 import './pages/insights-pages.js';
 import './pages/settings-pages.js';
+import './pages/gdrive-page.js';
 import './pages/settings-staff.js';
 import './pages/items-search.js';
 import './pages/pos.js';
@@ -271,3 +272,21 @@ function _openQuickExpenseModal() {
 }
 // Initialize FAB after a short delay (so it doesn't interfere with page load)
 setTimeout(_initExpenseFab, 2000);
+
+// ─── v8.18.0: global error safety net ─────────────────────────────────────
+// Any unhandled promise rejection or script error now shows a toast instead
+// of failing silently (throttled so a burst of errors can't spam the user).
+let _bbErrToastAt = 0;
+function _bbSurfaceError(msg) {
+  const now = Date.now();
+  if (now - _bbErrToastAt < 3000) return;
+  _bbErrToastAt = now;
+  toast(msg, 'error', { duration: 6000 });
+}
+window.addEventListener('unhandledrejection', (e) => {
+  const r = e.reason;
+  _bbSurfaceError('Unexpected error: ' + (r && r.message ? r.message : String(r || 'unknown')));
+});
+window.addEventListener('error', (e) => {
+  if (e.message) _bbSurfaceError('Script error: ' + e.message);
+});

@@ -1091,8 +1091,15 @@ route('/pos', async (el) => {
   }
 
   // ---------- checkout ----------
+  // ---------- checkout ----------
+  let _checkoutBusy = false;   // v8.18.0: one in-flight sale at a time
   async function checkout() {
     if (!cart.length) return;
+    // v8.18.0: double-click / double-F9 guard — a second tap while the sale
+    // POSTs would double-charge the customer and double-deduct stock.
+    if (_checkoutBusy) return;
+    _checkoutBusy = true;
+    setTimeout(() => { _checkoutBusy = false; }, 30000);   // hard safety release
     const payMethod = $$('input[name="pay-method"]:checked')[0]?.value || 'cash';
     let splitCash = 0, splitCard = 0, splitOnline = 0;
     if (payMethod === 'split') {

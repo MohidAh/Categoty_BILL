@@ -101,7 +101,15 @@
 </script>
 </head>
 <body>
-<div id="app"></div>
+<div id="app">
+  <div id="boot-splash" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#faf9f5;color:#3d3d3a;z-index:99999">
+    <div style="font-family:Georgia,'Times New Roman',serif;font-size:34px;font-weight:600;letter-spacing:-0.5px">BillBook</div>
+    <div style="margin-top:18px;width:26px;height:26px;border:3px solid #cc785c;border-top-color:transparent;border-radius:50%;animation:_bbbootspin 0.8s linear infinite"></div>
+    <div style="margin-top:14px;font-size:13px;color:#8e8b82;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif">Loading…</div>
+  </div>
+  <style>@keyframes _bbbootspin{to{transform:rotate(360deg)}}</style>
+  <script>try{if(document.documentElement.getAttribute('data-theme')==='dark'){var _bs=document.getElementById('boot-splash');_bs.style.background='#181715';_bs.style.color='#d4cfc4';}}catch(e){}</script>
+</div>
 <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 <div id="loading-overlay" class="loading-overlay" hidden>
   <div class="loading-spinner"></div>

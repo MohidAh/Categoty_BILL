@@ -136,6 +136,25 @@ export function hideLoading() {
   $('#loading-overlay').hidden = true;
 }
 
+// ---------- v8.18.0: Button busy-state helpers (double-click protection) ----------
+// btnBusy() returns false if the button is ALREADY busy — callers use that as
+// their re-entry guard. btnOk() restores the original label.
+export function btnBusy(btn, text = 'Working…') {
+  if (!btn || btn.disabled) return false;
+  btn.disabled = true;
+  btn.dataset.origHtml = btn.innerHTML;
+  btn.innerHTML = `<span class="spinner-sm"></span> ${esc(text)}`;
+  return true;
+}
+export function btnOk(btn) {
+  if (!btn) return;
+  btn.disabled = false;
+  if (btn.dataset.origHtml) {
+    btn.innerHTML = btn.dataset.origHtml;
+    delete btn.dataset.origHtml;
+  }
+}
+
 // ---------- Modal ----------
 export function openModal(title, contentHtml, actionsHtml = '', subtitle = '') {
   const root = $('#modal-root');

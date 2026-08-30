@@ -1,12 +1,17 @@
 """Cloud backup (Google Drive) API endpoints.
 
-All endpoints are manager-only (uses existing CASHIER_RESTRICTED_PREFIXES list).
+All endpoints are manager-only (/api/gdrive is in CASHIER_RESTRICTED_PREFIXES
+in main.py — the single RBAC source of truth).
 
 v8.14.2: Added a GET form of the OAuth callback so Google's redirect
 actually works (the original POST-only callback never received the
 browser GET that Google sends after consent). Also added a small
 thank-you redirect page so the operator sees confirmation in the popup
 they used for OAuth.
+
+v8.18.0: POS backup auto-import endpoints — the Settings > Google Drive
+page toggles the folder watcher, shows its status, and can trigger an
+immediate check ("Check Now" button).
 """
 from __future__ import annotations
 from typing import Any
@@ -26,6 +31,10 @@ class GDriveCallbackIn(BaseModel):
 
 class GDriveAutoBackupIn(BaseModel):
     hour: int  # 0-23 PKT
+
+
+class GDriveAutoImportIn(BaseModel):
+    enabled: bool
 
 
 @router.get("/api/gdrive/status")
@@ -89,6 +98,8 @@ def gdrive_disconnect() -> Any:
     """Forget the stored refresh_token. Operator can also revoke access at
     https://myaccount.google.com/permissions — we recommend both."""
     cloud_backup.disconnect()
+    # v8.18.0: also forget auto-import state so a future reconnect starts clean.
+    cloud_backup.set_auto_import_enabled(False)
     return {"ok": True}
 
 
@@ -130,3 +141,30 @@ def set_gdrive_auto_backup(payload: GDriveAutoBackupIn) -> Any:
         raise HTTPException(400, "hour must be 0-23")
     stored = cloud_backup.set_auto_backup_hour(payload.hour)
     return {"ok": True, "hour": stored}
+
+
+# ─── v8.18.0: POS backup auto-import ─────────────────────────────────────────
+
+@router.get("/api/gdrive/auto-import")
+def get_auto_import_status() -> Any:
+    """Auto-import status for the Settings > Google Drive page: enabled flag,
+    last check time, last result summary, and the recent processed files."""
+    return cloud_backup.get_auto_import_status()
+
+
+@router.post("/api/gdrive/auto-import")
+def set_auto_import(payload: GDriveAutoImportIn) -> Any:
+    """Enable/disable the Drive folder watcher (checkbox in Settings).
+
+    Safe to toggle before OAuth is complete — the preference is persisted
+    and takes effect once the operator connects their Google account.
+    """
+    enabled = cloud_backup.set_auto_import_enabled(payload.enabled)
+    return {"ok": True, "enabled": enabled}
+
+
+@router.post("/api/gdrive/auto-import/check")
+def auto_import_check_now() -> Any:
+    """Run a folder check RIGHT NOW (the "Check Now" button) instead of
+    waiting for the next scheduler tick. Returns the import summary."""
+    return cloud_backup.check_and_import_new_backups(force=True)

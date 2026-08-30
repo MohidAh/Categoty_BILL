@@ -171,6 +171,25 @@ def _scheduled_jobs_loop():
                 except Exception as e:
                     _logger.warning("Scheduled digest failed: %s", e)
                     last_run["digest_date"] = now.strftime("%Y-%m-%d")
+            # v8.18.0: POS backup auto-import — watch the "BillBook POS
+            # Imports" Drive folder for new backup zips uploaded from any
+            # device. Runs every ~15 minutes while enabled + connected.
+            try:
+                from . import cloud_backup
+                if cloud_backup.is_connected() and cloud_backup.is_auto_import_enabled():
+                    _last_chk = db.get_setting("gdrive_autoimport_last_check", "")
+                    _due = True
+                    if _last_chk:
+                        try:
+                            _last_t = _dt.strptime(_last_chk, "%Y-%m-%d %H:%M:%S")
+                            _due = (_dt.now() - _last_t) > _td(minutes=15)
+                        except ValueError:
+                            pass
+                    if _due:
+                        _logger.info("Scheduled: checking Drive for new POS backups")
+                        cloud_backup.check_and_import_new_backups()
+            except Exception as e:
+                _logger.warning("Drive auto-import check failed: %s", e)
         except Exception as e:
             _logger.error("Scheduled jobs loop error: %s", e)
         # Tick every 5 minutes — fine-grained enough to catch the hour

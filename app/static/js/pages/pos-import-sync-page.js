@@ -1,8 +1,18 @@
 // v8.2.3 — POS Backup Import page
+// v8.18.0 — UI fixes:
+//   1. Tables wrapped in .table-wrap (design-system scroll container) — the
+//      11-column import-runs table used to blow past the right edge of the
+//      screen. Now it scrolls horizontally inside its card.
+//   2. View-modal title fixed: openModal() ESCAPES its first argument, so
+//      passing an HTML block as the "title" rendered literal <div>…</div>
+//      tags in the modal header. Now it's a plain title + subtitle param.
+//   3. Destructive/async buttons (delete run, sync deletions) now lock
+//      while their request is in flight — double-clicks can't fire two
+//      irreversible delete POSTs.
 // Import daily backup zip from third-party Ezi POS system. Dedup via UNQCODE.
 import { route } from '../router.js';
 import { api, apiPost, apiUpload, apiDelete } from '../api.js';
-import { $, esc, fmtRs, fmtDate, toast, openModal, closeModal, skeletonCards, errorBox } from '../utils.js';
+import { $, esc, fmtRs, fmtDate, toast, openModal, closeModal, skeletonCards, errorBox, btnBusy, btnOk } from '../utils.js';
 
 const SVG = {
   upload: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
@@ -58,7 +68,10 @@ route('/pos-import', async (el) => {
     } else if (importRuns.length > 0) {
       // v8.5: render the structured pos_imports table — has sale_count, expense_count,
       // total_revenue, total_cogs, date_range, status, notes (warnings)
-      importsHtml = `<table class="table">
+      // v8.18.0: wrapped in .table-wrap so 11 columns scroll instead of
+      // overflowing the screen; min-width keeps columns readable.
+      importsHtml = `<div class="table-wrap">
+      <table class="table" style="min-width:1080px">
         <thead><tr>
           <th>When</th><th>Source</th><th>File</th><th>Date Range</th>
           <th>Sales</th><th>Expenses</th><th>Revenue</th><th>COGS</th>
@@ -78,14 +91,14 @@ route('/pos-import', async (el) => {
             const canDelete = run.status !== 'deleted';
             const canSync = run.status === 'imported';
             return `<tr ${run.status === 'deleted' ? 'style="opacity:0.5"' : ''}>
-              <td class="text-sm">${esc(fmtDate(run.created_at))}</td>
+              <td class="text-sm" style="white-space:nowrap">${esc(fmtDate(run.created_at))}</td>
               <td class="text-sm">${esc(run.source_name || '?')}</td>
-              <td class="text-sm"><code>${esc(run.filename || '?')}</code></td>
-              <td class="text-xs text-dim">${run.date_range_start || '—'} → ${run.date_range_end || '—'}</td>
+              <td class="text-sm" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(run.filename || '?')}"><code>${esc(run.filename || '?')}</code></td>
+              <td class="text-xs text-dim" style="white-space:nowrap">${esc(run.date_range_start || '—')} → ${esc(run.date_range_end || '—')}</td>
               <td><strong>${run.sale_count || 0}</strong></td>
               <td>${run.expense_count || 0}</td>
-              <td style="font-weight:600">${fmtRs(run.total_revenue || 0)}</td>
-              <td class="text-dim text-sm">${fmtRs(run.total_cogs || 0)}</td>
+              <td style="font-weight:600;white-space:nowrap">${fmtRs(run.total_revenue || 0)}</td>
+              <td class="text-dim text-sm" style="white-space:nowrap">${fmtRs(run.total_cogs || 0)}</td>
               <td>${warningBadge}</td>
               <td>${statusBadge}</td>
               <td style="white-space:nowrap">
@@ -103,10 +116,12 @@ route('/pos-import', async (el) => {
             </tr>`;
           }).join('')}
         </tbody>
-      </table>`;
+      </table>
+      </div>`;
     } else {
       // Fallback: legacy activity_log view
-      importsHtml = `<table class="table">
+      importsHtml = `<div class="table-wrap">
+      <table class="table">
         <thead><tr><th>When</th><th>File</th><th>Sales</th><th>Expenses</th><th>Skipped</th><th>Total</th><th></th></tr></thead>
         <tbody>
           ${recentImports.map(imp => {
@@ -122,7 +137,8 @@ route('/pos-import', async (el) => {
             </tr>`;
           }).join('')}
         </tbody>
-      </table>`;
+      </table>
+      </div>`;
     }
 
     $('#pi-out').innerHTML = `
@@ -199,6 +215,7 @@ route('/pos-import', async (el) => {
     const fileInput = $('#pi-file');
     if (uploadBtn && available) {
       uploadBtn.onclick = async () => {
+        if (uploadBtn.disabled) return;   // v8.18.0: double-click guard
         const file = fileInput.files[0];
         if (!file) { toast('Select a backup zip file first', 'error'); return; }
         if (!file.name.toLowerCase().endsWith('.zip')) { toast('File must be a .zip archive', 'error'); return; }
@@ -262,14 +279,17 @@ route('/pos-import', async (el) => {
     // v8.5: Wire delete import buttons (new: data-delete-run uses /by-id/{run_id})
     document.querySelectorAll('[data-delete-run]').forEach(btn => {
       btn.onclick = async () => {
+        if (btn.disabled) return;   // v8.18.0: double-click guard on irreversible deletes
         const runId = btn.dataset.deleteRun;
         if (!confirm('Delete this import and ALL its data?\n\nThis will permanently remove:\n• All sales from this import\n• All sale items\n• All cash drawer entries\n• All expenses from this import\n• Stock state will be reversed\n• Customer totals will be reversed\n\nThis cannot be undone.')) return;
+        btnBusy(btn, 'Deleting…');
         try {
           const r = await apiDelete(`/api/pos-import/by-id/${runId}`);
           toast(`Deleted: ${r.deleted_sales} sales, ${r.deleted_items} items, ${r.deleted_expense_imports} expenses, ${r.stock_reversed} stock reversals`, 'success');
           loadSummary();
         } catch (e) {
           toast('Delete failed: ' + e.message, 'error');
+          btnOk(btn);   // only re-enable on failure — success re-renders the page
         }
       };
     });
@@ -277,18 +297,22 @@ route('/pos-import', async (el) => {
     // v8.16.7: Wire Sync Deleted Expenses buttons
     document.querySelectorAll('[data-sync-exp-deletions]').forEach(btn => {
       btn.onclick = async () => {
+        if (btn.disabled) return;   // v8.18.0: double-click guard
         const runId = btn.dataset.syncExpDeletions;
+        btnBusy(btn, 'Checking…');
         // Step 1: Detect (dry-run)
         try {
           const r = await apiPost(`/api/pos-import/detect-expense-deletions/${runId}`, {});
           if (r.missing_count === 0) {
             toast(`No deleted expenses detected. (${r.total_imported} expenses checked)`, 'info', 5000);
+            btnOk(btn);
             return;
           }
           // Show summary
           const details = r.missing_expenses.map(e =>
             `• Rs ${e.amount.toFixed(2)} — ${e.description} (${e.date})`
           ).join('\n');
+          btnOk(btn);   // re-enable before the confirm() dialogs (user may take time)
           const proceed = confirm(
             `Found ${r.missing_count} expense(s) deleted in EZI POS:\n\n${details}\n\n` +
             `Total to reverse: Rs ${r.missing_total_amount.toFixed(2)}\n\n` +
@@ -300,6 +324,7 @@ route('/pos-import', async (el) => {
           const pin = prompt(`Enter Manager PIN to apply ${r.missing_count} expense deletions:`);
           if (!pin) return;
           // Step 3: Apply
+          btnBusy(btn, 'Applying…');
           const r2 = await apiPost('/api/pos-import/apply-expense-deletions', {
             missing_expenses: r.missing_expenses,
             import_run_id: parseInt(runId),
@@ -314,6 +339,7 @@ route('/pos-import', async (el) => {
           loadSummary();
         } catch (e) {
           toast('Expense sync failed: ' + e.message, 'error');
+          btnOk(btn);
         }
       };
     });
@@ -321,7 +347,9 @@ route('/pos-import', async (el) => {
     // v8.5: Wire drill-down buttons — show imported invoices for this run
     document.querySelectorAll('[data-drill-run]').forEach(btn => {
       btn.onclick = async () => {
+        if (btn.disabled) return;   // v8.18.0: double-click guard
         const runId = btn.dataset.drillRun;
+        btnBusy(btn, 'Loading…');
         try {
           const r = await api(`/api/pos-import/run/${runId}`);
           const rows = (r.sales || []).map(s => `<tr>
@@ -332,20 +360,23 @@ route('/pos-import', async (el) => {
             <td class="text-xs text-dim">${esc(s.created_at || '')}</td>
             <td><a href="#/pos/sale/${s.id}" class="btn btn-ghost btn-sm" onclick="closeModal()">View</a></td>
           </tr>`).join('');
+          // v8.18.0 FIX: openModal() ESCAPES its title argument — the old code
+          // passed an HTML block here, so users saw literal <div>/<h3> tags
+          // in the modal header. Title is now plain text + subtitle param.
           openModal(
-            `<div style="display:flex;justify-content:space-between;align-items:center">
-               <h3 style="margin:0">Import Run #${runId}</h3>
-               <span class="text-dim text-sm">${esc(r.run.filename || '')} · ${r.sale_count} sales</span>
-             </div>
-             <div style="margin-top:12px;max-height:60vh;overflow:auto">
+            `Import Run #${runId}`,
+            `<div style="margin-top:4px;max-height:60vh;overflow:auto" class="table-wrap">
                ${rows ? `<table class="table"><thead><tr>
                  <th>Invoice</th><th>Customer</th><th>Payment</th><th>Total</th><th>When</th><th></th>
                </tr></thead><tbody>${rows}</tbody></table>` : '<div class="text-dim text-sm" style="padding:16px">No sales in this run.</div>'}
              </div>`,
-            `<button class="btn btn-secondary" data-modal-close>Close</button>`
+            `<button class="btn btn-secondary" data-modal-close>Close</button>`,
+            `${r.run.filename || ''} · ${r.sale_count} sales`
           );
+          btnOk(btn);
         } catch (e) {
           toast('Failed to load import details: ' + e.message, 'error');
+          btnOk(btn);
         }
       };
     });
@@ -353,14 +384,17 @@ route('/pos-import', async (el) => {
     // Legacy delete-by-activity-log-id buttons (fallback for old summary rows)
     document.querySelectorAll('[data-delete-import]').forEach(btn => {
       btn.onclick = async () => {
+        if (btn.disabled) return;   // v8.18.0: double-click guard
         const importId = btn.dataset.deleteImport;
         if (!confirm('Delete this import and ALL its data?\n\nThis will permanently remove:\n• All sales from this import\n• All sale items\n• All cash drawer entries\n• All expenses from this import\n\nThis cannot be undone.')) return;
+        btnBusy(btn, 'Deleting…');
         try {
           const r = await apiDelete(`/api/pos-import/${importId}`);
           toast(`Deleted: ${r.deleted_sales} sales, ${r.deleted_items} items, ${r.deleted_expense_imports} expenses`, 'success');
           loadSummary();
         } catch (e) {
           toast('Delete failed: ' + e.message, 'error');
+          btnOk(btn);
         }
       };
     });

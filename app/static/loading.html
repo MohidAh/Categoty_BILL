@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BillBook — Starting…</title>
+<style>
+  /* v8.18.0: desktop splash — the Tauri webview opens THIS file first
+     (tauri.conf.json app.windows[].url = "loading.html"). It is fully
+     self-contained: no external fonts, no JS modules, no CDN. The Rust
+     shell navigates the window to the live backend the moment the
+     sidecar prints BILLBOOK_READY — this page only needs to look good
+     for those 2-4 seconds (previously: a blank white window). */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: #faf9f5;
+    color: #3d3d3a;
+    font-family: Georgia, 'Times New Roman', serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .wrap { text-align: center; padding: 24px; }
+  .logo {
+    font-size: 40px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+    color: #201f1d;
+  }
+  .logo .dot { color: #cc785c; }
+  .spinner {
+    width: 30px;
+    height: 30px;
+    margin: 26px auto 0;
+    border: 3px solid #cc785c;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  .status {
+    margin-top: 16px;
+    font-size: 14px;
+    color: #8e8b82;
+    font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  }
+  .hint {
+    margin-top: 34px;
+    font-size: 12px;
+    color: #b3afa5;
+    font-family: -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+    max-width: 340px;
+    line-height: 1.5;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-color-scheme: dark) {
+    body { background: #181715; color: #d4cfc4; }
+    .logo { color: #faf9f5; }
+    .status { color: #a09d96; }
+    .hint { color: #6f6c64; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="logo">BillBook<span class="dot">.</span></div>
+    <div class="spinner"></div>
+    <div class="status" id="status">Starting BillBook…</div>
+    <div class="hint">First launch after an install or update can take a few
+      extra seconds while the local server warms up.</div>
+  </div>
+  <!-- NOTE: no inline scripts here on purpose — this page is served from the
+       bundled tauri.localhost origin where the app CSP (script-src 'self')
+       blocks inline scripts. The Rust shell already shows its own dialog if
+       the backend doesn't become ready within 90 seconds, so this page can
+       stay fully static. -->
+</body>
+</html>

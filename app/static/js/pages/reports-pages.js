@@ -6,6 +6,7 @@ import { errorState } from '../core/states.js';
 import { api } from '../api.js';
 import { $, $$, esc, fmt, fmtRs, fmtDate, fmtPct, icon, toast, showLoading, hideLoading,
          openModal, closeModal, skeletonCards, skeletonRows, errorBox, emptyState, chartTheme } from '../utils.js';
+import { initListState } from '../list-state.js';
 
 // Shared SVG icon set
 const SVG = {
@@ -48,9 +49,15 @@ route('/reports', async (el) => {
 // ═══════════════════════════════════════════════════
 // OVERVIEW — date range + 4 tab views (Overview/Billwise/Category/Suppliers)
 // ═══════════════════════════════════════════════════
-route('/reports/overview', async (el) => {
+route('/reports/overview', async (el, path, q) => {
+  // v8.18.5: date range + tab persist across navigation
+  const st = initListState('reportsOverview', q, { start: '', end: '', tab: 'overview' });
+  st.syncUrlIfRestored();
   const today = new Date().toISOString().slice(0, 10);
   const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const initStart = st.val('start') || monthAgo;
+  const initEnd = st.val('end') || today;
+  st.replace({ start: initStart, end: initEnd });
 
   el.innerHTML = `
     <div class="pos-page-header">
@@ -64,34 +71,35 @@ route('/reports/overview', async (el) => {
 
     <div class="card mb-4">
       <div class="report-filters">
-        <div><label>From Date</label><input class="input" id="r-start" type="date" value="${monthAgo}"></div>
-        <div><label>To Date</label><input class="input" id="r-end" type="date" value="${today}"></div>
+        <div><label>From Date</label><input class="input" id="r-start" type="date" value="${initStart}"></div>
+        <div><label>To Date</label><input class="input" id="r-end" type="date" value="${initEnd}"></div>
         <button class="btn" id="r-generate-btn">
           <span style="display:inline-flex;width:14px;height:14px">${SVG.check}</span>
           Generate
         </button>
       </div>
       <div class="flex gap-2 mt-4" id="r-tabs">
-        <button class="btn btn-secondary btn-sm tab-btn active" data-tab="overview">Overview</button>
-        <button class="btn btn-secondary btn-sm tab-btn" data-tab="billwise">Bill-wise</button>
-        <button class="btn btn-secondary btn-sm tab-btn" data-tab="category">Category-wise</button>
-        <button class="btn btn-secondary btn-sm tab-btn" data-tab="suppliers">Suppliers</button>
+        <button class="btn btn-secondary btn-sm tab-btn ${st.val('tab') === 'overview' ? 'active' : ''}" data-tab="overview">Overview</button>
+        <button class="btn btn-secondary btn-sm tab-btn ${st.val('tab') === 'billwise' ? 'active' : ''}" data-tab="billwise">Bill-wise</button>
+        <button class="btn btn-secondary btn-sm tab-btn ${st.val('tab') === 'category' ? 'active' : ''}" data-tab="category">Category-wise</button>
+        <button class="btn btn-secondary btn-sm tab-btn ${st.val('tab') === 'suppliers' ? 'active' : ''}" data-tab="suppliers">Suppliers</button>
       </div>
     </div>
 
     <div id="r-out">${skeletonCards(3)}</div>`;
 
-  let currentTab = 'overview';
+  let currentTab = st.val('tab') || 'overview';
   let cachedData = {};
 
   $$('.tab-btn').forEach(btn => {
     btn.onclick = () => {
       currentTab = btn.dataset.tab;
+      st.replace({ tab: currentTab });
       $$('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
       renderTab();
     };
   });
-  $('#r-generate-btn').onclick = runReports;
+  $('#r-generate-btn').onclick = () => { st.replace({ start: $('#r-start').value, end: $('#r-end').value }); runReports(); };
   await runReports();
 
   async function runReports() {
@@ -273,9 +281,15 @@ route('/reports/overview', async (el) => {
 // No status dropdown — all bills shown by default.
 // Excel export produces per-category sheets (250/500/750/1000 + Summary).
 // ═══════════════════════════════════════════════════
-route('/reports/billwise', async (el) => {
+route('/reports/billwise', async (el, path, q) => {
+  // v8.18.5: date range persists across navigation
+  const st = initListState('reportsBillwise', q, { start: '', end: '' });
+  st.syncUrlIfRestored();
   const today = new Date().toISOString().slice(0, 10);
   const yearAgo = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10);
+  const initStart = st.val('start') || yearAgo;
+  const initEnd = st.val('end') || today;
+  st.replace({ start: initStart, end: initEnd });
   let allBills = [];
   let selectedBillId = null;
   // v8.7: cache for lazy-loaded bill details (bill_id → bill detail dict)
@@ -290,8 +304,8 @@ route('/reports/billwise', async (el) => {
         <p class="pos-page-header-sub">Click a bill below to see its items, cost, and profit. Export selected bills as Excel.</p>
       </div>
       <div class="pos-page-header-actions">
-        <input class="input input-sm" id="bw-start" type="date" value="${yearAgo}">
-        <input class="input input-sm" id="bw-end" type="date" value="${today}">
+        <input class="input input-sm" id="bw-start" type="date" value="${initStart}">
+        <input class="input input-sm" id="bw-end" type="date" value="${initEnd}">
         <button class="btn btn-sm" id="bw-generate-btn">
           <span style="display:inline-flex;width:14px;height:14px">${SVG.check}</span>
           Generate
@@ -300,9 +314,9 @@ route('/reports/billwise', async (el) => {
     </div>
     <div id="bw-out">${skeletonCards(2)}</div>`;
 
-  $('#bw-generate-btn').onclick = loadReport;
-  $('#bw-start').onchange = loadReport;
-  $('#bw-end').onchange = loadReport;
+  $('#bw-generate-btn').onclick = () => { st.replace({ start: $('#bw-start').value, end: $('#bw-end').value }); loadReport(); };
+  $('#bw-start').onchange = () => { st.replace({ start: $('#bw-start').value }); loadReport(); };
+  $('#bw-end').onchange = () => { st.replace({ end: $('#bw-end').value }); loadReport(); };
   await loadReport();
 
   async function loadReport() {
@@ -631,9 +645,15 @@ route('/reports/billwise', async (el) => {
 // ═══════════════════════════════════════════════════
 // TOP ITEMS
 // ═══════════════════════════════════════════════════
-route('/reports/top-items', async (el) => {
+route('/reports/top-items', async (el, path, q) => {
+  // v8.18.5: date range persists across navigation
+  const st = initListState('reportsTopItems', q, { start: '', end: '' });
+  st.syncUrlIfRestored();
   const today = new Date().toISOString().slice(0, 10);
   const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const initStart = st.val('start') || monthAgo;
+  const initEnd = st.val('end') || today;
+  st.replace({ start: initStart, end: initEnd });
 
   el.innerHTML = `
     <div class="pos-page-header">
@@ -643,8 +663,8 @@ route('/reports/top-items', async (el) => {
         <p class="pos-page-header-sub">Best performers by quantity and revenue.</p>
       </div>
       <div class="pos-page-header-actions">
-        <input class="input input-sm" id="ti-start" type="date" value="${monthAgo}">
-        <input class="input input-sm" id="ti-end" type="date" value="${today}">
+        <input class="input input-sm" id="ti-start" type="date" value="${initStart}">
+        <input class="input input-sm" id="ti-end" type="date" value="${initEnd}">
         <button class="btn btn-sm" id="ti-generate-btn">
           <span style="display:inline-flex;width:14px;height:14px">${SVG.check}</span>
           Generate
@@ -653,9 +673,9 @@ route('/reports/top-items', async (el) => {
     </div>
     <div id="ti-out">${skeletonCards(2)}</div>`;
 
-  $('#ti-generate-btn').onclick = loadReport;
-  $('#ti-start').onchange = loadReport;
-  $('#ti-end').onchange = loadReport;
+  $('#ti-generate-btn').onclick = () => { st.replace({ start: $('#ti-start').value, end: $('#ti-end').value }); loadReport(); };
+  $('#ti-start').onchange = () => { st.replace({ start: $('#ti-start').value }); loadReport(); };
+  $('#ti-end').onchange = () => { st.replace({ end: $('#ti-end').value }); loadReport(); };
   await loadReport();
 
   async function loadReport() {
@@ -698,9 +718,15 @@ route('/reports/top-items', async (el) => {
 // ═══════════════════════════════════════════════════
 // PEAK HOURS — heatmap of sales by hour
 // ═══════════════════════════════════════════════════
-route('/reports/peak-hours', async (el) => {
+route('/reports/peak-hours', async (el, path, q) => {
+  // v8.18.5: date range persists across navigation
+  const st = initListState('reportsPeakHours', q, { start: '', end: '' });
+  st.syncUrlIfRestored();
   const today = new Date().toISOString().slice(0, 10);
   const monthAgo = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const initStart = st.val('start') || monthAgo;
+  const initEnd = st.val('end') || today;
+  st.replace({ start: initStart, end: initEnd });
 
   el.innerHTML = `
     <div class="pos-page-header">
@@ -710,8 +736,8 @@ route('/reports/peak-hours', async (el) => {
         <p class="pos-page-header-sub">Sales distribution by hour of day &mdash; schedule staff accordingly.</p>
       </div>
       <div class="pos-page-header-actions">
-        <input class="input input-sm" id="ph-start" type="date" value="${monthAgo}">
-        <input class="input input-sm" id="ph-end" type="date" value="${today}">
+        <input class="input input-sm" id="ph-start" type="date" value="${initStart}">
+        <input class="input input-sm" id="ph-end" type="date" value="${initEnd}">
         <button class="btn btn-sm" id="ph-generate-btn">
           <span style="display:inline-flex;width:14px;height:14px">${SVG.check}</span>
           Generate
@@ -720,9 +746,9 @@ route('/reports/peak-hours', async (el) => {
     </div>
     <div id="ph-out">${skeletonCards(2)}</div>`;
 
-  $('#ph-generate-btn').onclick = loadReport;
-  $('#ph-start').onchange = loadReport;
-  $('#ph-end').onchange = loadReport;
+  $('#ph-generate-btn').onclick = () => { st.replace({ start: $('#ph-start').value, end: $('#ph-end').value }); loadReport(); };
+  $('#ph-start').onchange = () => { st.replace({ start: $('#ph-start').value }); loadReport(); };
+  $('#ph-end').onchange = () => { st.replace({ end: $('#ph-end').value }); loadReport(); };
   await loadReport();
 
   async function loadReport() {

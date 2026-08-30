@@ -3,6 +3,7 @@
 import { route, navigate } from '../router.js';
 import { api, apiPost } from '../api.js';
 import { $, esc, fmtRs, fmtDate, toast, openModal, closeModal, skeletonCards, errorBox, emptyState } from '../utils.js';
+import { initListState } from '../list-state.js';
 
 const SVG = {
   out: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>',
@@ -224,7 +225,10 @@ route('/transfers/out', async (el) => {
 
 // ─── Transfer In page (lists all challans — in + out) ─────────────────────
 
-route('/transfers/in', async (el) => {
+route('/transfers/in', async (el, path, q) => {
+  // v8.18.5: status filter persists across navigation
+  const st = initListState('transfersIn', q, { status: '' });
+  st.syncUrlIfRestored();
   el.innerHTML = `
     <div class="pos-page-header">
       <div class="pos-page-header-icon chip-success">${SVG.in}</div>
@@ -235,9 +239,9 @@ route('/transfers/in', async (el) => {
       <div class="pos-page-header-actions">
         <select class="input input-sm" id="tin-filter" style="width:auto">
           <option value="">All</option>
-          <option value="in_transit">In Transit</option>
-          <option value="accepted">Accepted</option>
-          <option value="rejected">Rejected</option>
+          <option value="in_transit" ${st.val('status') === 'in_transit' ? 'selected' : ''}>In Transit</option>
+          <option value="accepted" ${st.val('status') === 'accepted' ? 'selected' : ''}>Accepted</option>
+          <option value="rejected" ${st.val('status') === 'rejected' ? 'selected' : ''}>Rejected</option>
         </select>
         <button class="btn btn-secondary btn-sm" id="tin-refresh">
           <span style="display:inline-flex;width:14px;height:14px">${SVG.refresh}</span>
@@ -247,7 +251,7 @@ route('/transfers/in', async (el) => {
     </div>
     <div id="tin-out">${skeletonCards(2)}</div>`;
 
-  $('#tin-filter').onchange = loadTransfers;
+  $('#tin-filter').onchange = () => { st.replace({ status: $('#tin-filter').value }); loadTransfers(); };
   $('#tin-refresh').onclick = loadTransfers;
   await loadTransfers();
 

@@ -3,6 +3,7 @@ import { route, navigate } from '../router.js';
 import { emptyState, errorState } from '../core/states.js';
 import { api, apiPost, apiPut, apiDelete } from '../api.js';
 import { $, $$, toast, esc, icon, iconHtml, debounce, openModal, closeModal, skeletonCards, errorBox } from '../utils.js';
+import { initListState } from '../list-state.js';
 
 // Shared SVG icon set
 const SVG = {
@@ -16,7 +17,10 @@ const SVG = {
   save: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>',
 };
 
-route('/suppliers', async (el) => {
+route('/suppliers', async (el, path, q) => {
+  // v8.18.5: search persists across navigation (URL first, storage fallback)
+  const st = initListState('suppliers', q, { q: '' });
+  st.syncUrlIfRestored();
   el.innerHTML = `
     <div class="pos-page-header">
       <div class="pos-page-header-icon chip-success">${SVG.store}</div>
@@ -36,7 +40,7 @@ route('/suppliers', async (el) => {
       <div class="filter-bar">
         <div class="search-input filter-search">
           ${SVG.search}
-          <input class="input" id="s-search" placeholder="Search by name, phone, or address">
+          <input class="input" id="s-search" placeholder="Search by name, phone, or address" value="${esc(st.val('q'))}">
         </div>
       </div>
     </div>
@@ -45,10 +49,13 @@ route('/suppliers', async (el) => {
 
   $('#s-add-btn').onclick = () => openSupplierModal();
 
-  const debouncedSearch = debounce(() => loadSuppliers($('#s-search').value), 350);
+  const debouncedSearch = debounce(() => {
+    st.replace({ q: $('#s-search').value });
+    loadSuppliers(st.val('q'));
+  }, 350);
   $('#s-search').oninput = debouncedSearch;
 
-  await loadSuppliers('');
+  await loadSuppliers(st.val('q'));
 
   async function loadSuppliers(q) {
     let list;

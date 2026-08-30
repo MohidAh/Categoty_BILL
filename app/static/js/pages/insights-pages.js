@@ -5,6 +5,7 @@ import { errorState } from '../core/states.js';
 import { api, apiPost } from '../api.js';
 import { $, $$, esc, fmt, fmtRs, fmtDate, fmtPct, fmtDecimalPct, icon, toast, showLoading, hideLoading,
          openModal, closeModal, skeletonCards, errorBox, emptyState, chartTheme } from '../utils.js';
+import { initListState } from '../list-state.js';
 
 // Shared SVG icon set for insights pages
 const SVG = {
@@ -298,7 +299,10 @@ route('/insights/trends', async (el) => {
 // ═══════════════════════════════════════════════════
 // FORECAST — spend forecast chart + per-item forecasting
 // ═══════════════════════════════════════════════════
-route('/insights/forecast', async (el) => {
+route('/insights/forecast', async (el, path, q) => {
+  // v8.18.5: selected period persists across navigation
+  const st = initListState('forecast', q, { periods: '3' });
+  st.syncUrlIfRestored();
   el.innerHTML = `
     <div class="pos-page-header">
       <div class="pos-page-header-icon chip-pink">${SVG.trendUp}</div>
@@ -308,15 +312,15 @@ route('/insights/forecast', async (el) => {
       </div>
       <div class="pos-page-header-actions">
         <select class="select select-sm" id="fc-periods">
-          <option value="3">3 months ahead</option>
-          <option value="6">6 months ahead</option>
-          <option value="12">12 months ahead</option>
+          <option value="3" ${st.val('periods') === '3' ? 'selected' : ''}>3 months ahead</option>
+          <option value="6" ${st.val('periods') === '6' ? 'selected' : ''}>6 months ahead</option>
+          <option value="12" ${st.val('periods') === '12' ? 'selected' : ''}>12 months ahead</option>
         </select>
       </div>
     </div>
     <div id="fc-out">${skeletonCards(3)}</div>`;
 
-  $('#fc-periods').onchange = loadForecast;
+  $('#fc-periods').onchange = () => { st.replace({ periods: $('#fc-periods').value }); loadForecast(); };
   await loadForecast();
 
   async function loadForecast() {

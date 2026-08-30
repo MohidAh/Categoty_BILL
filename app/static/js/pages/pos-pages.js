@@ -5,6 +5,7 @@ import { route, navigate, reload } from '../router.js';
 import { api, apiPost, apiPut, apiDelete } from '../api.js';
 import { $, $$, esc, fmt, fmtRs, fmtDate, icon, toast, showLoading, hideLoading,
          openModal, closeModal, skeletonCards, errorBox, emptyState } from '../utils.js';
+import { initListState } from '../list-state.js';
 
 // ─── Shared SVG icons (SnowUI: no emoji main icons) ───
 const SVG = {
@@ -38,7 +39,10 @@ function statCard(label, value, chipClass, svgIcon, sub = '') {
 // ═══════════════════════════════════════════════════
 // RETURNS — search sale, select items, refund/exchange
 // ═══════════════════════════════════════════════════
-route('/pos/returns', async (el) => {
+route('/pos/returns', async (el, path, q) => {
+  // v8.18.5: search + date filter persist across navigation
+  const st = initListState('posReturns', q, { q: '', date: '' });
+  st.syncUrlIfRestored();
   el.innerHTML = `
     <div class="pos-page-header">
       <div class="pos-page-header-icon chip-primary">${SVG.return}</div>
@@ -52,9 +56,9 @@ route('/pos/returns', async (el) => {
       <div class="filter-bar">
         <div class="search-input filter-search">
           ${SVG.search}
-          <input class="input" id="r-search" placeholder="Search by invoice number or customer name...">
+          <input class="input" id="r-search" placeholder="Search by invoice number or customer name..." value="${esc(st.val('q'))}">
         </div>
-        <input class="input filter-select" id="r-date" type="date" style="max-width:180px">
+        <input class="input filter-select" id="r-date" type="date" style="max-width:180px" value="${esc(st.val('date'))}">
       </div>
     </div>
 
@@ -62,10 +66,13 @@ route('/pos/returns', async (el) => {
       <p class="text-dim text-sm">Search for a sale to process a return.</p>
     </div>`;
 
-  let searchTerm = '';
+  let searchTerm = st.val('q');
   const searchInput = $('#r-search');
-  searchInput.oninput = () => { searchTerm = searchInput.value; loadSales(); };
-  $('#r-date').onchange = loadSales;
+  searchInput.oninput = () => { searchTerm = searchInput.value; st.replace({ q: searchTerm }); loadSales(); };
+  $('#r-date').onchange = () => { st.replace({ date: $('#r-date').value }); loadSales(); };
+
+  // v8.18.5: restored search/date from a previous visit → load immediately
+  if (searchTerm || st.val('date')) loadSales();
 
   async function loadSales() {
     const date = $('#r-date').value;

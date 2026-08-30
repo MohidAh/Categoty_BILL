@@ -6,6 +6,7 @@ import { route, navigate, reload } from '../router.js';
 import { api, apiPost, apiPut } from '../api.js';
 import { $, esc, fmtRs, fmtDate, toast, openModal, closeModal,
          skeletonCards, errorBox, emptyState } from '../utils.js';
+import { initListState } from '../list-state.js';
 
 const SVG = {
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>',
@@ -58,7 +59,10 @@ export async function refreshPendingCount() {
   } catch { return 0; }
 }
 
-route('/insights/approval-queue', async (el) => {
+route('/insights/approval-queue', async (el, path, q) => {
+  // v8.18.5: status filter persists across navigation
+  const st = initListState('approvalQueue', q, { status: 'pending' });
+  st.syncUrlIfRestored();
   el.innerHTML = `
     <div class="pos-page-header">
       <div class="pos-page-header-icon chip-warning">${SVG.robot}</div>
@@ -71,11 +75,11 @@ route('/insights/approval-queue', async (el) => {
       </div>
       <div class="pos-page-header-actions">
         <select class="input input-sm" id="aq-filter" style="width:auto">
-          <option value="pending">Pending</option>
-          <option value="executed">Approved</option>
-          <option value="rejected">Rejected</option>
-          <option value="expired">Expired</option>
-          <option value="">All</option>
+          <option value="pending" ${st.val('status') === 'pending' ? 'selected' : ''}>Pending</option>
+          <option value="executed" ${st.val('status') === 'executed' ? 'selected' : ''}>Approved</option>
+          <option value="rejected" ${st.val('status') === 'rejected' ? 'selected' : ''}>Rejected</option>
+          <option value="expired" ${st.val('status') === 'expired' ? 'selected' : ''}>Expired</option>
+          <option value="" ${st.val('status') === '' ? 'selected' : ''}>All</option>
         </select>
         <button class="btn btn-secondary btn-sm" id="aq-refresh">
           <span style="display:inline-flex;width:12px;height:12px">${SVG.check}</span>
@@ -85,7 +89,7 @@ route('/insights/approval-queue', async (el) => {
     </div>
     <div id="aq-out">${skeletonCards(2)}</div>`;
 
-  $('#aq-filter').onchange = loadActions;
+  $('#aq-filter').onchange = () => { st.replace({ status: $('#aq-filter').value }); loadActions(); };
   $('#aq-refresh').onclick = loadActions;
   await loadActions();
   // Refresh the badge on entry

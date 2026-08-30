@@ -2,6 +2,7 @@
 import { route } from '../router.js';
 import { api } from '../api.js';
 import { $, esc, fmt, fmtRs, fmtDate, toast, skeletonCards, errorBox } from '../utils.js';
+import { initListState } from '../list-state.js';
 
 const SVG = {
   calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
@@ -9,8 +10,12 @@ const SVG = {
   box: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>',
 };
 
-route('/reports/daily-stock', async (el) => {
-  const today = new Date().toISOString().slice(0, 10);
+route('/reports/daily-stock', async (el, path, q) => {
+  // v8.18.5: date persists across navigation
+  const st = initListState('dailyStock', q, { date: '' });
+  st.syncUrlIfRestored();
+  const today = st.val('date') || new Date().toISOString().slice(0, 10);
+  st.replace({ date: today });
   el.innerHTML = `
     <div class="pos-page-header">
       <div class="pos-page-header-icon chip-secondary">${SVG.box}</div>
@@ -31,7 +36,7 @@ route('/reports/daily-stock', async (el) => {
     </div>
     <div id="ds-out">${skeletonCards(2)}</div>`;
 
-  $('#ds-date').onchange = loadReport;
+  $('#ds-date').onchange = () => { st.replace({ date: $('#ds-date').value }); loadReport(); };
   $('#ds-export-btn').onclick = () => {
     const date = $('#ds-date').value;
     window.location.href = `/api/reports/daily-stock/export?date=${date}`;

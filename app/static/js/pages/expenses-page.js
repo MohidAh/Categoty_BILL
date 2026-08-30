@@ -5,6 +5,7 @@ import { route } from '../router.js';
 import { api, apiPost, apiPut, apiDelete } from '../api.js';
 import { $, esc, fmtRs, fmtDate, toast, openModal, closeModal,
          skeletonCards, errorBox, chartTheme, chartOptions } from '../utils.js';
+import { initListState } from '../list-state.js';
 
 const SVG = {
   wallet: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>',
@@ -140,8 +141,12 @@ route('/reports/expenses', async (el) => {
   el.innerHTML = '<div class="card text-center text-dim" style="padding:24px">Redirecting to Billing → Expenses…</div>';
 });
 
-route('/bills/expenses', async (el) => {
-  const thisMonth = new Date().toISOString().slice(0, 7);
+route('/bills/expenses', async (el, path, q) => {
+  // v8.18.5: month + category/type filters persist across navigation
+  const st = initListState('expenses', q, { month: '', cat: '', type: '' });
+  st.syncUrlIfRestored();
+  const thisMonth = st.val('month') || new Date().toISOString().slice(0, 7);
+  st.replace({ month: thisMonth });
   el.innerHTML = `
     <div class="pos-page-header">
       <div class="pos-page-header-icon chip-secondary">${SVG.wallet}</div>
@@ -176,8 +181,8 @@ route('/bills/expenses', async (el) => {
           </select>
           <select class="input input-sm" id="exp-filter-type" style="width:auto">
             <option value="">All types</option>
-            <option value="operating">Operating</option>
-            <option value="owner_draw">Owner Draw</option>
+            <option value="operating" ${st.val('type') === 'operating' ? 'selected' : ''}>Operating</option>
+            <option value="owner_draw" ${st.val('type') === 'owner_draw' ? 'selected' : ''}>Owner Draw</option>
           </select>
           <button class="btn btn-secondary btn-sm" id="exp-owner-draw-btn" title="Quick owner draw">
             <span style="display:inline-flex;width:14px;height:14px">${SVG.wallet}</span>
@@ -199,16 +204,20 @@ route('/bills/expenses', async (el) => {
       </div>
     </div>`;
 
-  $('#exp-month').onchange = loadAll;
-  $('#exp-filter-cat').onchange = loadTable;
-  $('#exp-filter-type').onchange = loadTable;
+  $('#exp-month').onchange = () => { st.replace({ month: $('#exp-month').value }); loadAll(); };
+  $('#exp-filter-cat').onchange = () => { st.replace({ cat: $('#exp-filter-cat').value }); loadTable(); };
+  $('#exp-filter-type').onchange = () => { st.replace({ type: $('#exp-filter-type').value }); loadTable(); };
   $('#exp-add-btn').onclick = () => openAddExpenseModal();
   $('#exp-recurring-btn').onclick = () => openRecurringModal();
   $('#exp-owner-draw-btn').onclick = () => openAddExpenseModal({ expenseType: 'owner_draw' });
 
-  await loadAll();
+  await loadAll({ first: true });
 
-  async function loadAll() {
+  async function loadAll({ first = false } = {}) {
+    // v8.18.5: on the first load, run sequentially — loadSummary populates
+    // the category filter options, and loadTable must read the restored
+    // category AFTER they exist (otherwise the saved filter is dropped).
+    if (first) { await loadSummary(); await loadTable(); return; }
     await Promise.all([loadSummary(), loadTable()]);
   }
 
@@ -230,7 +239,10 @@ route('/bills/expenses', async (el) => {
       const currentFilter = filterCat.value;
       filterCat.innerHTML = '<option value="">All categories</option>' +
         (s.categories || []).map(c => `<option value="${c.id}">${esc(c.name)}${c.is_fixed ? ' (fixed)' : ''}</option>`).join('');
-      filterCat.value = currentFilter;
+      // v8.18.5: first population — apply the restored/saved category filter
+      // (the select is empty until the API returns, so the saved value can
+      // only be applied here)
+      filterCat.value = currentFilter || st.val('cat') || '';
       // Budget cards (only categories with a budget OR with spend this month)
       const budgetItems = (s.by_category || []).filter(b => b.budget > 0 || b.total > 0);
       if (budgetItems.length === 0) {

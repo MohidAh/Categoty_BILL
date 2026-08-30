@@ -1,3 +1,5 @@
+import { initListState } from '../list-state.js';
+
 // v8.7: Items page — bill-wise master-detail view.
 // Shows bills first (lightweight list with aggregates); clicking a bill
 // expands it inline to reveal its bill_items (fetched lazily via
@@ -20,8 +22,12 @@ const SVG = {
 };
 
 route('/items', async (el, path, q) => {
-  const search = q.q || '';
-  const page = parseInt(q.page) || 1;
+  // v8.18.5: search + page persist across navigation (URL first, storage
+  // fallback) — list → bill detail → Back keeps your search and page.
+  const st = initListState('items', q, { q: '', page: 1 });
+  st.syncUrlIfRestored();
+  const search = st.val('q');
+  const page = st.val('page');
 
   el.innerHTML = `
     <div class="pos-page-header">
@@ -44,18 +50,23 @@ route('/items', async (el, path, q) => {
     <div id="i-stats"></div>
     <div id="i-results" class="card mt-4">${skeletonRows(8, 6)}</div>`;
 
-  // Debounced search → updates URL → re-renders
+  // Debounced search → silent URL/state update + local reload
   const debouncedSearch = debounce(() => doSearch(), 400);
   $('#i-search').oninput = debouncedSearch;
 
   function doSearch() {
-    const q = $('#i-search').value;
-    navigate(`/items?q=${encodeURIComponent(q)}`);
+    st.replace({ q: $('#i-search').value, page: 1 });
+    load();
   }
 
   // v8.7: fetch the bill list (lightweight — no items embedded)
+  await load();
+
+  async function load() {
+  const curQ = st.val('q');
+  const curPage = st.val('page');
   try {
-    const data = await api(`/api/items/bills?q=${encodeURIComponent(search)}&page=${page}`);
+    const data = await api(`/api/items/bills?q=${encodeURIComponent(curQ)}&page=${curPage}`);
 
     // Summary stats
     if (data.total > 0) {
@@ -85,8 +96,8 @@ route('/items', async (el, path, q) => {
 
     // Master list — each row is a bill; click to expand
     if (data.bills.length === 0) {
-      $('#i-results').innerHTML = search
-        ? emptyState('No bills found', `No bills match "${esc(search)}". Try a different search term.`, '', '')
+      $('#i-results').innerHTML = curQ
+        ? emptyState('No bills found', `No bills match "${esc(curQ)}". Try a different search term.`, '', '')
         : emptyState('No bills yet', 'Upload a bill to see items here. Bills in both review and confirmed status are shown.', '', '');
       return;
     }
@@ -115,7 +126,7 @@ route('/items', async (el, path, q) => {
       </div>
       <div class="text-xs text-dim text-center mt-3">
         ${data.total} bills found &middot; page ${data.page} of ${data.pages_total || 1}
-        ${data.pages_total > 1 ? `&middot; <a href="#/items?q=${encodeURIComponent(search)}&page=${data.page + 1}" class="link">Next →</a>` : ''}
+        ${data.pages_total > 1 ? `&middot; <a href="#/items?q=${encodeURIComponent(curQ)}&page=${data.page + 1}" class="link">Next →</a>` : ''}
       </div>`;
 
     // Wire row click → toggle expand
@@ -129,6 +140,7 @@ route('/items', async (el, path, q) => {
   } catch (e) {
     $('#i-results').innerHTML = errorBox(e.message, "location.reload()");
   }
+  } // end of load()
 });
 
 // Render a single bill row in the master list

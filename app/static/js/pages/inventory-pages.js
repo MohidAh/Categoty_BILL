@@ -4,6 +4,7 @@ import { route, navigate, reload } from '../router.js';
 import { api, apiPost, apiPut, apiDelete } from '../api.js';
 import { $, $$, esc, fmt, fmtRs, fmtDate, icon, toast, showLoading, hideLoading,
          openModal, closeModal, skeletonCards, errorBox, emptyState } from '../utils.js';
+import { initListState } from '../list-state.js';
 
 // Shared SVG icon set for inventory pages
 const SVG = {
@@ -40,7 +41,10 @@ function statCard(label, value, chipClass, svgIcon, sub = '') {
 // ═══════════════════════════════════════════════════
 // STOCK LEVELS — full inventory table with filter
 // ═══════════════════════════════════════════════════
-route('/stock', async (el) => {
+route('/stock', async (el, path, q) => {
+  // v8.18.5: search + stock filter persist across navigation
+  const st = initListState('stock', q, { q: '', filter: '' });
+  st.syncUrlIfRestored();
   el.innerHTML = `
     <div class="pos-page-header">
       <div class="pos-page-header-icon chip-warning">${SVG.layers}</div>
@@ -66,13 +70,13 @@ route('/stock', async (el) => {
       <div class="filter-bar">
         <div class="search-input filter-search">
           ${SVG.search}
-          <input class="input" id="st-search" placeholder="Filter by category name or code">
+          <input class="input" id="st-search" placeholder="Filter by category name or code" value="${esc(st.val('q'))}">
         </div>
         <select class="select filter-select" id="st-filter">
           <option value="">All stock</option>
-          <option value="low">Low stock (&lt;10)</option>
-          <option value="out">Out of stock</option>
-          <option value="ok">In stock</option>
+          <option value="low" ${st.val('filter') === 'low' ? 'selected' : ''}>Low stock (&lt;10)</option>
+          <option value="out" ${st.val('filter') === 'out' ? 'selected' : ''}>Out of stock</option>
+          <option value="ok" ${st.val('filter') === 'ok' ? 'selected' : ''}>In stock</option>
         </select>
       </div>
     </div>
@@ -189,8 +193,9 @@ route('/stock', async (el) => {
 
   renderStats();
   renderTable();
-  $('#st-search').oninput = renderTable;
-  $('#st-filter').onchange = renderTable;
+  // v8.18.5: persist filter state (silent URL update)
+  $('#st-search').oninput = () => { st.replace({ q: $('#st-search').value }); renderTable(); };
+  $('#st-filter').onchange = () => { st.replace({ filter: $('#st-filter').value }); renderTable(); };
 });
 
 // ═══════════════════════════════════════════════════

@@ -5,6 +5,7 @@ import { api, apiDelete, apiPost, apiPut } from '../api.js';
 import { $, $$, esc, fmt, fmtRs, fmtDate, icon, iconHtml, debounce, toast,
          skeletonRows, errorBox, emptyState } from '../utils.js';
 import { pagination } from '../components/pagination.js';
+import { initListState } from '../list-state.js';
 import { errorState } from '../core/states.js';
 
 // Shared SVG icon set for billing pages
@@ -20,13 +21,20 @@ const SVG = {
 };
 
 route('/bills', async (el, path, q) => {
-  const page = parseInt(q.page) || 1;
-  const status = q.status || '';
-  const search = q.q || '';
-  const payment = q.payment || '';
+  // v8.18.5: list state (page/filters/sort) now survives navigation —
+  // URL params win; on a bare URL the last-used state is restored from
+  // localStorage (list → bill detail → Back keeps your view).
+  const st = initListState('bills', q, {
+    q: '', status: '', payment: '', sort_by: '', sort_order: 'desc', page: 1,
+  });
+  st.syncUrlIfRestored();
+  const page = st.val('page');
+  const status = st.val('status');
+  const search = st.val('q');
+  const payment = st.val('payment');
   // v8.15.0: Dynamic sort state
-  const sortBy = q.sort_by || '';
-  const sortOrder = q.sort_order || 'desc';
+  const sortBy = st.val('sort_by');
+  const sortOrder = st.val('sort_order');
 
   el.innerHTML = `
     <div class="pos-page-header">
@@ -94,39 +102,33 @@ route('/bills', async (el, path, q) => {
 
   // v8.15.0: Local refresh — re-fetches data and re-renders ONLY the table area
   // instead of calling navigate() which rebuilds the entire shell (sidebar, header, etc.)
+  // v8.18.5: hash syncing now goes through the list-state helper — replaceState
+  // for filters/sort (silent, no history entry) and pushState for pagination
+  // (history entry so Back/Forward step through pages). The old approach set
+  // location.hash directly, which pushed a history entry per keystroke and
+  // needed a hashchange-suppression hack.
   let currentSortBy = sortBy;
   let currentSortOrder = sortOrder;
-  let _suppressHashChange = false;
-
-  function updateHash(params) {
-    _suppressHashChange = true;
-    window.location.hash = '#/bills?' + new URLSearchParams(params).toString();
-    setTimeout(() => { _suppressHashChange = false; }, 50);
-  }
-
-  // Listen for hashchange — skip if we initiated it (local refresh)
-  window.addEventListener('hashchange', (e) => {
-    if (_suppressHashChange) {
-      e.stopImmediatePropagation();
-      e.preventDefault();
-    }
-  }, { capture: true });
 
   function doFilter() {
-    const q = $('#b-search').value, s = $('#b-status').value, p = $('#b-payment').value;
-    updateHash({ q, status: s, payment: p, sort_by: currentSortBy, sort_order: currentSortOrder });
-    loadBills(1, q, s, p, currentSortBy, currentSortOrder);
+    st.replace({
+      q: $('#b-search').value,
+      status: $('#b-status').value,
+      payment: $('#b-payment').value,
+      page: 1,  // filters reset to page 1
+    });
+    loadBills(1, st.val('q'), st.val('status'), st.val('payment'), currentSortBy, currentSortOrder);
   }
 
-  async function loadBills(pageNum, q, st, pay, sb, so) {
+  async function loadBills(pageNum, q, statusV, pay, sb, so) {
     let data;
     try {
-      data = await api(`/api/bills?page=${pageNum}&status=${encodeURIComponent(st)}&q=${encodeURIComponent(q)}&payment=${encodeURIComponent(pay)}&sort_by=${encodeURIComponent(sb)}&sort_order=${encodeURIComponent(so)}`);
+      data = await api(`/api/bills?page=${pageNum}&status=${encodeURIComponent(statusV)}&q=${encodeURIComponent(q)}&payment=${encodeURIComponent(pay)}&sort_by=${encodeURIComponent(sb)}&sort_order=${encodeURIComponent(so)}`);
     } catch (e) {
       $('#bills-table').innerHTML = errorBox(e.message, "location.reload()");
       return;
     }
-    renderTable(data, pageNum, q, st, pay, sb, so);
+    renderTable(data, pageNum, q, statusV, pay, sb, so);
   }
 
   let data;
@@ -250,118 +252,119 @@ route('/bills', async (el, path, q) => {
         e.preventDefault();
         const match = originalOnclick.match(/page=(\d+)/);
         const newPage = match ? parseInt(match[1]) : 1;
-        const q = $('#b-search')?.value || '';
-        const s = $('#b-status')?.value || '';
-        const p = $('#b-payment')?.value || '';
-        updateHash({ q, status: s, payment: p, sort_by: currentSortBy, sort_order: currentSortOrder, page: newPage });
-        loadBills(newPage, q, s, p, currentSortBy, currentSortOrder);
+        // v8.18.5: push a history entry so Back/Forward step through pages
+        st.push({ page: newPage });
+        loadBills(newPage, $('#b-search')?.value || '', $('#b-status')?.value || '',
+                  $('#b-payment')?.value || '', currentSortBy, currentSortOrder);
       };
     });
-  } // end of renderTable
 
-  // Wire up row clicks and bulk action buttons (no inline onclick)
-  $$('.bill-row').forEach(row => {
-    row.onclick = () => navigate('/bills/' + row.dataset.id);
-  });
-  // v8.15.0: Sortable column headers — click to toggle sort (local refresh, no full navigation)
-  $$('.sortable[data-sort]').forEach(th => {
-    th.onclick = () => {
-      const col = th.dataset.sort;
-      let newSortBy = col;
-      let newSortOrder = 'desc';
-      if (currentSortBy === col) {
-        newSortOrder = currentSortOrder === 'asc' ? 'desc' : 'asc';
-      }
-      currentSortBy = newSortBy;
-      currentSortOrder = newSortOrder;
-      const q = $('#b-search')?.value || '';
-      const s = $('#b-status')?.value || '';
-      const p = $('#b-payment')?.value || '';
-      updateHash({ q, status: s, payment: p, sort_by: newSortBy, sort_order: newSortOrder });
-      loadBills(1, q, s, p, newSortBy, newSortOrder);
+    // v8.18.5 FIX: all table wiring lives INSIDE renderTable. It used to run
+    // once after the first render — but renderTable replaces #bills-table's
+    // innerHTML on every filter/sort/page change, destroying the handlers,
+    // so after the first filter change rows became unclickable and sort
+    // headers went dead. Re-wiring here keeps them alive across re-renders.
+    $$('.bill-row').forEach(row => {
+      row.onclick = () => navigate('/bills/' + row.dataset.id);
+    });
+    // v8.15.0: Sortable column headers — click to toggle sort (local refresh, no full navigation)
+    $$('.sortable[data-sort]').forEach(th => {
+      th.onclick = () => {
+        const col = th.dataset.sort;
+        let newSortBy = col;
+        let newSortOrder = 'desc';
+        if (currentSortBy === col) {
+          newSortOrder = currentSortOrder === 'asc' ? 'desc' : 'asc';
+        }
+        currentSortBy = newSortBy;
+        currentSortOrder = newSortOrder;
+        st.replace({ sort_by: newSortBy, sort_order: newSortOrder, page: 1 });
+        loadBills(1, $('#b-search')?.value || '', $('#b-status')?.value || '',
+                  $('#b-payment')?.value || '', newSortBy, newSortOrder);
+      };
+    });
+    $$('.row-cb').forEach(cb => {
+      cb.onchange = () => toggleSelect(parseInt(cb.dataset.id), cb.checked);
+    });
+    const selAll = $('#select-all');
+    if (selAll) selAll.onchange = () => toggleSelectAll(selAll.checked);
+
+    const bulkPaidBtn = $('#bulk-paid-btn');
+    if (bulkPaidBtn) bulkPaidBtn.onclick = markPaidSelected;
+    const bulkExportBtn = $('#bulk-export-btn');
+    if (bulkExportBtn) bulkExportBtn.onclick = exportSelected;
+    const bulkDeleteBtn = $('#bulk-delete-btn');
+    if (bulkDeleteBtn) bulkDeleteBtn.onclick = deleteSelected;
+    const bulkClearBtn = $('#bulk-clear-btn');
+    if (bulkClearBtn) bulkClearBtn.onclick = () => {
+      selected.clear();
+      $$('.row-cb').forEach(cb => { cb.checked = false; });
+      if (selAll) selAll.checked = false;
+      renderBulkBar();
     };
-  });
-  $$('.row-cb').forEach(cb => {
-    cb.onchange = () => toggleSelect(parseInt(cb.dataset.id), cb.checked);
-  });
-  const selAll = $('#select-all');
-  if (selAll) selAll.onchange = () => toggleSelectAll(selAll.checked);
 
-  const bulkPaidBtn = $('#bulk-paid-btn');
-  if (bulkPaidBtn) bulkPaidBtn.onclick = markPaidSelected;
-  const bulkExportBtn = $('#bulk-export-btn');
-  if (bulkExportBtn) bulkExportBtn.onclick = exportSelected;
-  const bulkDeleteBtn = $('#bulk-delete-btn');
-  if (bulkDeleteBtn) bulkDeleteBtn.onclick = deleteSelected;
-  const bulkClearBtn = $('#bulk-clear-btn');
-  if (bulkClearBtn) bulkClearBtn.onclick = () => {
-    selected.clear();
-    $$('.row-cb').forEach(cb => { cb.checked = false; });
-    if (selAll) selAll.checked = false;
-    renderBulkBar();
-  };
+    // Empty-state upload button
+    const emptyBtn = document.querySelector('.empty-state button');
+    if (emptyBtn && !data.bills.length) emptyBtn.onclick = () => navigate('/bills/new');
 
-  // Empty-state upload button
-  const emptyBtn = document.querySelector('.empty-state button');
-  if (emptyBtn && !data.bills.length) emptyBtn.onclick = () => navigate('/bills/new');
+    // Inline view/delete buttons
+    $$('[data-view]').forEach(b => b.onclick = (e) => { e.stopPropagation(); navigate('/bills/' + b.dataset.view); });
+    $$('[data-delete]').forEach(b => b.onclick = (e) => {
+      e.stopPropagation();
+      confirmDeleteBill(parseInt(b.dataset.delete), b.dataset.name);
+    });
 
-  // Inline view/delete buttons
-  $$('[data-view]').forEach(b => b.onclick = (e) => { e.stopPropagation(); navigate('/bills/' + b.dataset.view); });
-  $$('[data-delete]').forEach(b => b.onclick = (e) => {
-    e.stopPropagation();
-    confirmDeleteBill(parseInt(b.dataset.delete), b.dataset.name);
-  });
-
-  // Inline payment status changes
-  $$('.inline-pay').forEach(sel => {
-    sel.onchange = async (e) => {
-      const id = e.target.dataset.id;
-      const val = e.target.value;
-      try {
-        await api(`/api/bills/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payment_status: val }) });
-        toast(`Bill #${id} marked as ${val}`, 'success');
-      } catch (err) {
-        toast("Update failed: " + err.message, 'error');
-      }
-      reload();
-    };
-  });
-
-  // Inline total editing
-  $$('.inline-edit').forEach(span => {
-    span.title = 'Click to edit';
-    span.onclick = async (e) => {
-      const id = e.target.dataset.id;
-      const field = e.target.dataset.field;
-      const oldVal = e.target.dataset.value;
-      const input = document.createElement('input');
-      input.type = 'number';
-      input.step = '0.01';
-      input.value = oldVal;
-      input.style.width = '90px';
-      input.style.textAlign = 'right';
-      input.className = 'input';
-      e.target.replaceWith(input);
-      input.focus();
-      input.select();
-      const save = async () => {
-        const newVal = input.value;
-        if (newVal === oldVal) { reload(); return; }
+    // Inline payment status changes
+    $$('.inline-pay').forEach(sel => {
+      sel.onchange = async (e) => {
+        const id = e.target.dataset.id;
+        const val = e.target.value;
         try {
-          await api(`/api/bills/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: parseFloat(newVal) }) });
-          toast(`Updated bill #${id}`, 'success');
+          await api(`/api/bills/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payment_status: val }) });
+          toast(`Bill #${id} marked as ${val}`, 'success');
         } catch (err) {
           toast("Update failed: " + err.message, 'error');
         }
         reload();
       };
-      input.onblur = save;
-      input.onkeydown = (ev) => {
-        if (ev.key === 'Enter') input.blur();
-        if (ev.key === 'Escape') { input.value = oldVal; reload(); }
+    });
+
+    // Inline total editing
+    $$('.inline-edit').forEach(span => {
+      span.title = 'Click to edit';
+      span.onclick = async (e) => {
+        const id = e.target.dataset.id;
+        const field = e.target.dataset.field;
+        const oldVal = e.target.dataset.value;
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.step = '0.01';
+        input.value = oldVal;
+        input.style.width = '90px';
+        input.style.textAlign = 'right';
+        input.className = 'input';
+        e.target.replaceWith(input);
+        input.focus();
+        input.select();
+        const save = async () => {
+          const newVal = input.value;
+          if (newVal === oldVal) { reload(); return; }
+          try {
+            await api(`/api/bills/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ [field]: parseFloat(newVal) }) });
+            toast(`Updated bill #${id}`, 'success');
+          } catch (err) {
+            toast("Update failed: " + err.message, 'error');
+          }
+          reload();
+        };
+        input.onblur = save;
+        input.onkeydown = (ev) => {
+          if (ev.key === 'Enter') input.blur();
+          if (ev.key === 'Escape') { input.value = oldVal; reload(); }
+        };
       };
-    };
-  });
+    });
+  } // end of renderTable
 
   async function markPaidSelected() {
     if (selected.size === 0) return;

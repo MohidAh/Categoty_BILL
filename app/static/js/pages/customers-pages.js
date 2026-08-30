@@ -5,6 +5,7 @@ import { errorState } from '../core/states.js';
 import { api, apiPost, apiPut, apiDelete } from '../api.js';
 import { $, $$, esc, fmt, fmtRs, fmtDate, icon, toast, showLoading, hideLoading,
          openModal, closeModal, skeletonCards, errorBox, emptyState } from '../utils.js';
+import { initListState } from '../list-state.js';
 
 // Shared SVG icon set for customers pages
 const SVG = {
@@ -51,7 +52,10 @@ function getTier(points) {
 // ═══════════════════════════════════════════════════
 // ALL CUSTOMERS — searchable list with stat cards
 // ═══════════════════════════════════════════════════
-route('/customers', async (el) => {
+route('/customers', async (el, path, q) => {
+  // v8.18.5: search persists across navigation (URL first, storage fallback)
+  const st = initListState('customers', q, { q: '' });
+  st.syncUrlIfRestored();
   el.innerHTML = `
     <div class="pos-page-header">
       <div class="pos-page-header-icon chip-info">${SVG.users}</div>
@@ -73,7 +77,7 @@ route('/customers', async (el) => {
       <div class="filter-bar">
         <div class="search-input filter-search">
           ${SVG.search}
-          <input class="input" id="c-search" placeholder="Search by name or phone number">
+          <input class="input" id="c-search" placeholder="Search by name or phone number" value="${esc(st.val('q'))}">
         </div>
       </div>
     </div>
@@ -96,7 +100,8 @@ route('/customers', async (el) => {
   renderStats();
   renderList();
 
-  $('#c-search').oninput = renderList;
+  // v8.18.5: persist search state (silent URL update — no history spam)
+  $('#c-search').oninput = () => { st.replace({ q: $('#c-search').value }); renderList(); };
 
   function renderStats() {
     const total = allCustomers.length;

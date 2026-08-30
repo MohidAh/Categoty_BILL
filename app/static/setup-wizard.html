@@ -112,7 +112,7 @@ h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; text-align: center; let
 .radio-option-label { font-size: 14px; font-weight: 600; }
 .radio-option-desc { font-size: 11px; color: var(--text-2); }
 
-/* v8.14.2: Integration cards for step 5 (GDrive / FBR / Digest) */
+/* v8.14.2: Integration cards for step 5 (FBR / Digest) */
 .int-card {
   border: 1px solid var(--border); border-radius: var(--radius-control);
   padding: 14px; margin-bottom: 10px; transition: border-color .15s, background .15s;
@@ -178,8 +178,7 @@ var state = {
   geminiKey: '',
   startPage: 'launcher',
   // v8.14.2: opt-in integrations (step 5). All default off / empty.
-  gdriveConnect: false,
-  gdriveBackupHour: 2,        // 2 AM PKT — operator-chosen daily Drive backup hour
+  // v8.18.4: gdriveConnect / gdriveBackupHour removed with the Drive feature.
   digestEnabled: false,
   digestHour: 21,              // 9 PM PKT — when the daily WhatsApp digest is sent
   digestPhone: '',             // E.164 like +923331234567
@@ -391,12 +390,10 @@ function renderStep4(c) {
   };
 }
 
-// ─── v8.14.2: Step 5 — opt-in integrations (GDrive / FBR / Digest) ───────
-// All three default off. The wizard persists the operator's choices in the
-// same POST /api/setup/wizard call. GDrive OAuth happens AFTER the wizard
-// completes (the wizard creates the session, then the frontend opens the
-// OAuth URL in a popup so the existing /api/gdrive/* endpoints can use the
-// session cookie).
+// ─── v8.14.2: Step 5 — opt-in integrations (FBR / Digest) ──────────────
+// All default off. The wizard persists the operator's choices in the
+// same POST /api/setup/wizard call.
+// v8.18.4: the Google Drive opt-in card was removed with the feature.
 function renderStep5(c) {
   // Hour options 0..23, formatted as 12 AM / 1 AM / 2 AM ... 11 PM
   var hourOptions = function(selected) {
@@ -407,24 +404,10 @@ function renderStep5(c) {
     }
     return out;
   };
-  var gdriveIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
   var fbrIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>';
   var digestIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
   c.innerHTML = '<label class="wizard-label">Step 5 — Optional Integrations</label>' +
     '<p style="font-size:12px;color:var(--text-2);margin:0 0 12px">Everything here is off by default. Pick what you want now — you can change these in Settings later.</p>' +
-
-    // ─── Google Drive ────────────────────────────────────────────
-    '<div class="int-card' + (state.gdriveConnect ? ' on' : '') + '" id="int-gdrive">' +
-      '<div class="int-row"><input type="checkbox" id="w-gdrive" ' + (state.gdriveConnect ? 'checked' : '') + '><div class="int-icon">' + gdriveIcon + '</div>' +
-        '<div class="int-meta"><div class="int-title">Google Drive auto-backup</div>' +
-        '<div class="int-desc">Encrypted daily DB snapshot to your own Google Drive. 30-day retention. Weekly restore-test.</div></div>' +
-      '</div>' +
-      '<div class="int-config">' +
-        '<label class="wizard-label" style="font-size:12px">Daily backup time</label>' +
-        '<select class="wizard-input" id="w-gdrive-hour">' + hourOptions(state.gdriveBackupHour) + '</select>' +
-        '<p class="int-note">After setup, a Google sign-in popup will open to authorize BillBook. Your Drive credentials never touch our servers — OAuth refresh-token is stored encrypted on this device only.</p>' +
-      '</div>' +
-    '</div>' +
 
     // ─── FBR ────────────────────────────────────────────────────
     '<div class="int-card' + (state.fbrAutoPost ? ' on' : '') + '" id="int-fbr">' +
@@ -471,14 +454,10 @@ function renderStep5(c) {
       flip();
     });
   };
-  toggleCard('int-gdrive', 'w-gdrive', 'gdriveConnect');
   toggleCard('int-fbr', 'w-fbr', 'fbrAutoPost');
   toggleCard('int-digest', 'w-digest', 'digestEnabled');
 
-  // Persist hour selects + phone on change so back/forward navigation works.
-  document.getElementById('w-gdrive-hour').onchange = function() {
-    state.gdriveBackupHour = parseInt(this.value, 10) || 2;
-  };
+  // Persist hour select + phone on change so back/forward navigation works.
   document.getElementById('w-digest-hour').onchange = function() {
     state.digestHour = parseInt(this.value, 10) || 21;
   };
@@ -490,7 +469,6 @@ function renderStep5(c) {
   document.getElementById('w-finish').onclick = function() {
     // Re-read all field values from the DOM (defensive against the user
     // having changed the dropdown without firing onchange in some browsers).
-    state.gdriveBackupHour = parseInt(document.getElementById('w-gdrive-hour').value, 10) || 2;
     state.digestHour = parseInt(document.getElementById('w-digest-hour').value, 10) || 21;
     state.digestPhone = (document.getElementById('w-digest-phone').value || '').trim();
     // Validate phone IF digest is enabled
@@ -519,9 +497,7 @@ function finishSetup() {
       categories: state.categories,
       gemini_key: state.geminiKey,
       start_page: state.startPage,
-      // v8.14.2: opt-in integrations
-      gdrive_connect: state.gdriveConnect,
-      gdrive_backup_hour: state.gdriveBackupHour,
+      // v8.14.2: opt-in integrations (v8.18.4: gdrive fields removed with the feature)
       digest_enabled: state.digestEnabled,
       digest_hour: state.digestHour,
       digest_phone: state.digestPhone,
@@ -535,30 +511,8 @@ function finishSetup() {
       localStorage.setItem('bb-user-name', 'Manager');
       var page = res.data.start_page || 'launcher';
       var url = '/?#' + (page === 'pos' ? '/pos' : page === 'dashboard' ? '/reports/store-profit' : '/launcher');
-      // v8.14.2: if operator opted-in to GDrive, kick off the OAuth flow
-      // in a popup BEFORE navigating away. The wizard POST just set the
-      // session cookie, so the popup can hit /api/gdrive/connect-url and
-      // the GET /api/gdrive/callback with that cookie. Google's consent
-      // screen opens; on grant, the callback redirects the popup to a
-      // small static "Connected" page the operator can close.
-      var openGdrive = res.data.gdrive_connect === true || state.gdriveConnect;
-      var finishRedirect = function() { window.location.href = url; };
-      if (openGdrive) {
-        try {
-          fetch('/api/gdrive/connect-url', {credentials: 'same-origin'})
-            .then(function(r2) { return r2.json(); })
-            .then(function(d2) {
-              if (d2 && d2.url) {
-                window.open(d2.url, 'gdrive-oauth',
-                  'width=560,height=720,noopener=yes');
-              }
-            }).catch(function() {}).finally(finishRedirect);
-          // Safety net: navigate even if the connect-url fetch hangs.
-          setTimeout(finishRedirect, 3000);
-        } catch (e) { finishRedirect(); }
-      } else {
-        finishRedirect();
-      }
+      // v8.18.4: Google Drive OAuth popup removed with the feature.
+      window.location.href = url;
     } else {
       document.getElementById('err').textContent = res.data.error || 'Setup failed';
       btn.textContent = 'Finish Setup ✓'; btn.disabled = false;

@@ -20,8 +20,8 @@ from .security import (
 )
 
 # PR 8: version constants (read by /api/version)
-APP_VERSION = "8.15.1"
-APP_VERSION_NAME = "Branding & Appearance — full design.md system, working theme engine"
+APP_VERSION = "8.18.4"
+APP_VERSION_NAME = "Google Drive cloud backup removed — local & LAN backups remain"
 
 # ─── App creation ───
 app = FastAPI(title="BillBook")
@@ -104,60 +104,25 @@ _signal.signal(_signal.SIGTERM, _clean_shutdown)
 _signal.signal(_signal.SIGINT, _clean_shutdown)
 
 # ─── v8.14.0: Production-hardening scheduled jobs ────────────────────────────
-# A background thread runs three daily jobs:
-#   <operator-chosen hour, default 02:00> PKT — Google Drive cloud backup (if configured)
-#   03:00 PKT on Sundays — Weekly restore-test (if configured)
+# A background thread runs the daily job:
 #   <operator-chosen hour, default 21:00> PKT — Daily sales digest to owner (if enabled)
 # Jobs are no-ops if not configured — safe to always schedule.
-# v8.14.2: Drive backup hour + digest hour are both operator-configurable
-# from the setup wizard (and Settings). The scheduler re-reads them each tick.
+# v8.14.2: The digest hour is operator-configurable from the setup wizard
+# (and Settings). The scheduler re-reads it each tick.
+# v8.18.4: Google Drive backup + restore-test + POS auto-import jobs removed
+# along with the whole Drive feature.
 import threading as _threading
 import time as _time_mod
-from datetime import datetime as _dt, timedelta as _td
+from datetime import datetime as _dt
 
 def _scheduled_jobs_loop():
     """Long-running background thread that ticks every 5 minutes and
     runs any due scheduled job. Runs in a daemon thread so it dies with
     the main process — no cleanup needed."""
-    last_run = {"gdrive_backup_date": None,
-                "gdrive_restore_date": None,
-                "digest_date": None}
+    last_run = {"digest_date": None}
     while True:
         try:
             now = _dt.now()
-            # v8.14.2: Drive backup hour is now operator-configurable via the
-            # setup wizard + Settings (default 2 = 2 AM). Read from settings
-            # every tick so a wizard change takes effect on the same day.
-            backup_hour = 2
-            try:
-                bh = int(db.get_setting("gdrive_backup_hour", "2"))
-                if 0 <= bh <= 23:
-                    backup_hour = bh
-            except Exception:
-                pass
-            # Daily cloud backup at the chosen hour (once per day)
-            if now.hour == backup_hour and last_run["gdrive_backup_date"] != now.strftime("%Y-%m-%d"):
-                try:
-                    from . import cloud_backup
-                    if cloud_backup.is_connected():
-                        _logger.info("Scheduled: running Google Drive backup at hour %d", backup_hour)
-                        cloud_backup.backup_now()
-                        last_run["gdrive_backup_date"] = now.strftime("%Y-%m-%d")
-                except Exception as e:
-                    _logger.warning("Scheduled GDrive backup failed: %s", e)
-                    last_run["gdrive_backup_date"] = now.strftime("%Y-%m-%d")  # don't retry till tomorrow
-            # 03:00 PKT on Sundays — restore test
-            if now.hour == 3 and now.weekday() == 6 and \
-               last_run["gdrive_restore_date"] != now.strftime("%Y-%m-%d"):
-                try:
-                    from . import cloud_backup
-                    if cloud_backup.is_connected():
-                        _logger.info("Scheduled: running Google Drive restore-test")
-                        cloud_backup.restore_test()
-                        last_run["gdrive_restore_date"] = now.strftime("%Y-%m-%d")
-                except Exception as e:
-                    _logger.warning("Scheduled restore-test failed: %s", e)
-                    last_run["gdrive_restore_date"] = now.strftime("%Y-%m-%d")
             # Daily digest at configured hour (default 21:00 PKT)
             digest_hour = int(db.get_setting("digest_hour", "21"))
             if now.hour == digest_hour and \
@@ -171,25 +136,6 @@ def _scheduled_jobs_loop():
                 except Exception as e:
                     _logger.warning("Scheduled digest failed: %s", e)
                     last_run["digest_date"] = now.strftime("%Y-%m-%d")
-            # v8.18.0: POS backup auto-import — watch the "BillBook POS
-            # Imports" Drive folder for new backup zips uploaded from any
-            # device. Runs every ~15 minutes while enabled + connected.
-            try:
-                from . import cloud_backup
-                if cloud_backup.is_connected() and cloud_backup.is_auto_import_enabled():
-                    _last_chk = db.get_setting("gdrive_autoimport_last_check", "")
-                    _due = True
-                    if _last_chk:
-                        try:
-                            _last_t = _dt.strptime(_last_chk, "%Y-%m-%d %H:%M:%S")
-                            _due = (_dt.now() - _last_t) > _td(minutes=15)
-                        except ValueError:
-                            pass
-                    if _due:
-                        _logger.info("Scheduled: checking Drive for new POS backups")
-                        cloud_backup.check_and_import_new_backups()
-            except Exception as e:
-                _logger.warning("Drive auto-import check failed: %s", e)
         except Exception as e:
             _logger.error("Scheduled jobs loop error: %s", e)
         # Tick every 5 minutes — fine-grained enough to catch the hour
@@ -303,7 +249,6 @@ CASHIER_RESTRICTED_PREFIXES = (
     "/api/branch-config",        # branch configuration PUT
     "/api/employees/wallet",     # wallet adjustments — manager-only (H7 fix)
     # v8.14.0: production-hardening endpoints
-    "/api/gdrive",               # cloud backup — credentials + manual triggers
     "/api/fbr/credentials",     # FBR credentials set/clear
     "/api/fbr/auto-post",       # FBR auto-post toggle
     "/api/fbr/compliance-check", # FBR compliance audit
@@ -680,8 +625,7 @@ app.include_router(_audit_router.router)
 # v8.2.3: POS backup import router moved up (before imports.router) — see line 250
 
 # v8.14.0: Production-hardening routers
-from .routers import cloud_backup as _cloud_router
-app.include_router(_cloud_router.router)
+# v8.18.4: Google Drive cloud-backup router removed with the feature.
 from .routers import fbr as _fbr_router
 app.include_router(_fbr_router.router)
 from .routers import digest as _digest_router

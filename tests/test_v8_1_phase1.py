@@ -329,7 +329,8 @@ def test_setup_wizard_html_exists():
     assert "Optional AI" in html          # step 4 (was "Optional AI + Finish")
     assert "Optional Integrations" in html  # v8.14.2: step 5 added
     assert "5 quick steps" in html          # subtitle bumped 4 → 5
-    assert "Google Drive auto-backup" in html    # v8.14.2: GDrive opt-in card
+    # v8.18.4: GDrive opt-in card removed with the feature — must NOT reappear
+    assert "Google Drive auto-backup" not in html
     assert "FBR auto-post" in html               # v8.14.2: FBR opt-in card
     assert "Daily WhatsApp digest" in html       # v8.14.2: digest opt-in card
     assert "/api/setup/wizard" in html

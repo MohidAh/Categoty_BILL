@@ -137,8 +137,10 @@ def test_version_endpoint_returns_version_dict():
         assert "version_name" in body, f"Missing 'version_name': {body}"
         assert "python" in body, f"Missing 'python': {body}"
         assert "git_commit" in body, f"Missing 'git_commit': {body}"
-        # version should match APP_VERSION constant
-        assert body["version"] == "8.16.0", f"Version should be 8.16.0, got {body['version']}"
+        # version should match APP_VERSION constant (v8.18.4 — Drive removal)
+        from app.main import APP_VERSION
+        assert body["version"] == APP_VERSION == "8.18.4", \
+            f"Version should be 8.18.4, got {body['version']}"
         # Python version should be a non-empty string
         assert body["python"], "Python version should be non-empty"
         # git_commit defaults to 'dev' if env var not set

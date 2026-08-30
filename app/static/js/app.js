@@ -44,7 +44,7 @@ import './pages/audit-report-page.js';
 import './pages/pos-import-sync-page.js';
 import './pages/insights-pages.js';
 import './pages/settings-pages.js';
-import './pages/gdrive-page.js';
+// v8.18.4: Google Drive settings page removed with the feature
 import './pages/settings-staff.js';
 import './pages/items-search.js';
 import './pages/pos.js';

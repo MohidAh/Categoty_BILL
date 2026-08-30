@@ -364,16 +364,12 @@ route('/settings/backups', async (el) => {
           <span style="display:inline-flex;width:14px;height:14px">${SVG.backup}</span>
           Backup Now
         </button>
-        <button class="btn btn-secondary btn-sm" id="bk-gdrive-btn" title="Google Drive cloud backup + POS auto-import">
-          <span style="display:inline-flex;width:14px;height:14px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg></span>
-          Google Drive
-        </button>
+        <!-- v8.18.4: Google Drive cloud-backup button removed with the feature -->
       </div>
     </div>
     <div id="bk-out">${skeletonCards(2)}</div>`;
 
   $('#bk-now-btn').onclick = doBackup;
-  $('#bk-gdrive-btn').onclick = () => { window.location.hash = '#/settings/gdrive'; };
   $('#bk-upload-btn').onclick = () => $('#bk-upload-input').click();
   $('#bk-upload-input').onchange = doUpload;
   await loadBackups();

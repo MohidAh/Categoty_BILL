@@ -441,10 +441,10 @@ class WizardIn(BaseModel):
     gemini_key: str = ""
     start_page: str = "launcher"  # pos | dashboard | launcher
     # ─── v8.14.2: opt-in integrations ───────────────────────────────────
-    # All three default OFF / empty so the wizard is safe to skip.
+    # All default OFF / empty so the wizard is safe to skip.
     # See app/static/setup-wizard.html step 5 (Optional integrations).
-    gdrive_connect: bool = False               # operator intends to connect Drive
-    gdrive_backup_hour: int | None = None      # 0-23 PKT — when Drive is connected, daily backup runs at this hour
+    # v8.18.4: gdrive_connect / gdrive_backup_hour removed with the Drive
+    # feature — old wizard clients sending them are silently ignored.
     digest_enabled: bool = False               # daily WhatsApp sales digest
     digest_hour: int | None = None             # 0-23 PKT — default 21 (9 PM) if None
     digest_phone: str = ""                     # E.164 like +923331234567
@@ -539,12 +539,9 @@ def setup_wizard(payload: WizardIn, request: Request = None) -> Any:
     start_page = payload.start_page if payload.start_page in valid_start_pages else "launcher"
     db.set_setting("start_page", start_page)
     # ─── v8.14.2: persist opt-in integration choices (all default off) ──
-    # The actual OAuth flow for GDrive happens AFTER this endpoint returns
-    # (the wizard frontend opens the OAuth URL in a popup using the session
-    # cookie this endpoint just set). The hour is persisted here so the
-    # scheduler in main.py picks it up the moment OAuth completes.
-    if payload.gdrive_backup_hour is not None and 0 <= int(payload.gdrive_backup_hour) <= 23:
-        db.set_setting("gdrive_backup_hour", str(int(payload.gdrive_backup_hour)))
+    # v8.18.4: the Google Drive opt-in (connect flag + backup hour) was
+    # removed along with the whole Drive feature. Old clients that still
+    # POST gdrive_* fields are ignored — Pydantic drops unknown fields.
     # Daily WhatsApp digest — Twilio creds are added later in Settings.
     db.set_setting("digest_enabled", "1" if payload.digest_enabled else "0")
     if payload.digest_hour is not None and 0 <= int(payload.digest_hour) <= 23:
@@ -563,15 +560,12 @@ def setup_wizard(payload: WizardIn, request: Request = None) -> Any:
     db.log_activity("setup_wizard_completed", "system", None,
                     f"Setup wizard completed — {len(cats)} categories, start_page={start_page}",
                     {"business_type": payload.business_type, "category_count": len(cats),
-                     "gdrive_connect": payload.gdrive_connect,
                      "digest_enabled": payload.digest_enabled,
                      "fbr_auto_post": payload.fbr_auto_post})
     r = JSONResponse({
         "ok": True,
         "start_page": start_page,
         "category_count": len(cats),
-        # Echo back so the wizard frontend knows whether to open the OAuth popup.
-        "gdrive_connect": payload.gdrive_connect,
     })
     # v8.14.2: skip cookie-setting when called directly (tests) — the session
     # row still exists; only the Set-Cookie header needs a real request.

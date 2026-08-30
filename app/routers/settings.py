@@ -239,7 +239,7 @@ def system_features() -> Any:
         "balance_sheet_report": True,
         "sms": cfg["enabled"],
         "multi_shop": False,
-        "cloud_backup": False,
+        # v8.18.4: "cloud_backup" flag removed with the Google Drive feature
         "daraz_integration": False,
         "external_pos_import": True,
         "sales_targets": True,

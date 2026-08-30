@@ -45,6 +45,9 @@ def main():
     if port != 8000:
         print(f"[desktop] Port 8000 in use, using {port}", flush=True)
 
+    # v8.18.4: the BILLBOOK_PORT export (used only by the Google Drive OAuth
+    # redirect URI) was removed along with the Drive feature.
+
     # Print health line for the Tauri shell to detect
     print(f"BILLBOOK_READY port={port}", flush=True)
 

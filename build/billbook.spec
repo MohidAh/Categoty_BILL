@@ -79,15 +79,8 @@ hidden_imports += collect_submodules('dbfread')
 hidden_imports += ['pytrends']
 
 # v8.14.0: Production-hardening packages
-hidden_imports += collect_submodules('google.oauth2')
-hidden_imports += collect_submodules('google_auth_oauthlib')
-# v8.15.1: do NOT collect_submodules('googleapiclient') — it force-includes
-# the ~100 MB googleapiclient.discovery_cache.documents static docs. The app
-# builds the Drive service with static_discovery=False (app/cloud_backup.py)
-# and its `from googleapiclient.discovery import build` / `from
-# googleapiclient.http import MediaFileUpload` statements are traced by
-# PyInstaller automatically. Targeted entries + documents exclusion below.
-hidden_imports += ['googleapiclient.discovery', 'googleapiclient.http']
+# v8.18.4: Google OAuth/Drive hidden imports removed with the feature
+# (google.oauth2, google_auth_oauthlib, googleapiclient.*).
 hidden_imports += collect_submodules('twilio')
 # v8.15.1: sqlcipher3-binary only publishes manylinux wheels on PyPI, so it is
 # only ever installed on Linux build machines. The try/except keeps this spec
@@ -116,9 +109,6 @@ excluded_imports = [
     'scipy',                                  # not required by pytrends
     'matplotlib',                             # charts are JS/reportlab-side
     'snowflake', 'snowflake-connector-python',
-    # ~100 MB of offline Google API discovery docs the app never uses
-    # (cloud_backup.py passes static_discovery=False):
-    'googleapiclient.discovery_cache.documents',
 ]
 
 a = Analysis(
@@ -138,17 +128,6 @@ a = Analysis(
 )
 
 pyz = PYZ(a.pure)
-
-# v8.15.1: strip the ~100 MB offline Google API discovery docs. PyInstaller 6
-# auto-collects package data files, and `excludes` does NOT remove those (only
-# modules), so filter the datas list directly. Safe because the app builds the
-# Drive service with static_discovery=False (app/cloud_backup.py) - the docs
-# are never read at runtime.
-_datas_before = len(a.datas)
-a.datas = [d for d in a.datas
-           if 'discovery_cache/documents' not in d[0].replace(chr(92), '/')]
-print(f'[spec] dropped {_datas_before - len(a.datas)} Google discovery doc '
-      f'data files ({_datas_before} -> {len(a.datas)} datas entries)')
 
 exe = EXE(
     pyz,

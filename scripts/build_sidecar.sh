@@ -25,6 +25,9 @@ mkdir -p data
 
 PACKER="${PACKER:-pyinstaller}"
 
+# v8.18.4: the Google OAuth client embedding (GDRIVE_JSON + warn_missing_creds
+# + creds_args in both packers) was removed with the Drive feature.
+
 # PyInstaller's --add-data separator is os.pathsep: ';' on Windows,
 # ':' on macOS/Linux. (The old fallback used ':' everywhere, which
 # silently breaks the data path on the Windows runner.)
@@ -51,7 +54,8 @@ try_nuitka() {
   python -m nuitka --version >/dev/null 2>&1 || return 1
   echo "[sidecar] Nuitka build starting (slow: 12-20 min)..."
   python -m nuitka --standalone --onefile --output-dir=dist --output-filename=billbook_sidecar \
-      --include-data-dir=app/static=app/static --include-module=app.main \
+      --include-data-dir=app/static=app/static \
+      --include-module=app.main \
       --include-module=app.desktop_entry --include-module=uvicorn \
       --include-package=app app/desktop_entry.py
   echo "[sidecar] Nuitka OK"

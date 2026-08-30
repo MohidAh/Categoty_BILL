@@ -1581,17 +1581,13 @@ def init():
         except Exception:
             pass
 
-        # v8.14.0: Settings rows for FBR auto-post + cloud backup + digest
+        # v8.14.0: Settings rows for FBR auto-post + digest
         _set_default_setting_v8_5("fbr_auto_post", "0")             # off by default
-        _set_default_setting_v8_5("gdrive_refresh_token_enc", "")  # set on OAuth
-        _set_default_setting_v8_5("gdrive_folder_id", "")
-        _set_default_setting_v8_5("gdrive_last_backup_at", "")
-        _set_default_setting_v8_5("gdrive_last_restore_test_at", "")
-        _set_default_setting_v8_5("gdrive_last_restore_test_ok", "")
-        # v8.14.2: operator-chosen daily Drive backup hour (0-23 PKT).
-        # Default 2 = 2 AM. The setup wizard asks the user to pick this when
-        # they opt-in to GDrive. Scheduler in main.py reads this setting.
-        _set_default_setting_v8_5("gdrive_backup_hour", "2")
+        # v8.18.4: Google Drive cloud backup removed. Delete every gdrive_*
+        # settings row left over from older installs — this also drops the
+        # stored (encrypted) OAuth refresh token, so no trace of the Drive
+        # connection survives the upgrade.
+        c.execute("DELETE FROM settings WHERE key LIKE 'gdrive_%'")
         _set_default_setting_v8_5("digest_enabled", "0")           # daily sales digest off by default
         _set_default_setting_v8_5("digest_hour", "21")             # 9 PM PKT
         _set_default_setting_v8_5("digest_phone", "")              # E.164 like +923331234567

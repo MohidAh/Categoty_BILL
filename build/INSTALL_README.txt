@@ -39,29 +39,26 @@ WHAT THE INSTALLER DOES NOT EXPOSE
 
 OPTIONAL FEATURES (NONE ARE REQUIRED)
 -------------------------------------
-BillBook ships with 5 production-hardening features that are OFF by default.
+BillBook ships with 4 production-hardening features that are OFF by default.
 The app boots, logs in, and rings up sales without ANY of them configured.
 Enable them later from Settings when (and only when) you're ready:
 
-   1. Google Drive cloud backup   - Settings > Cloud Backup > Connect
-                                    (off until you click "Connect"; no
-                                    GDrive account is ever contacted)
-   2. FBR POS live integration     - Settings > FBR > Configure
+   1. FBR POS live integration     - Settings > FBR > Configure
                                     (off until you enter FBR-issued
                                     usr_id/password/pos_id; sales are
                                     never auto-posted without your
                                     explicit toggle)
-   3. Daily WhatsApp digest        - Settings > Owner Digest
+   2. Daily WhatsApp digest        - Settings > Owner Digest
                                     (off until you enter Twilio SID +
                                     owner phone; no messages are ever
                                     sent without configuration)
-   4. DB at-rest encryption        - Settings > Security
+   3. DB at-rest encryption        - Settings > Security
                                     (SQLCipher-based; currently available
                                     on Linux servers. Windows installs run
                                     standard SQLite - the app works
                                     identically, the DB file is simply
                                     not encrypted on disk)
-   5. NSSM auto-restart service    - Run scripts\windows\install_service.bat
+   4. NSSM auto-restart service    - Run scripts\windows\install_service.bat
                                     as admin (off until you run this
                                     script; without it, the app runs
                                     as a normal user process - close

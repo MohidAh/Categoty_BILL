@@ -15,10 +15,8 @@ qrcode>=7.4
 zeroconf>=0.131
 
 # v8.14.0: Production-hardening dependencies
-# - Cloud backup via Google Drive (OAuth + Drive API)
-google-auth>=2.28
-google-auth-oauthlib>=1.2
-google-api-python-client>=2.100
+# v8.18.4: Google Drive deps (google-auth, google-auth-oauthlib,
+# google-api-python-client) removed with the cloud-backup feature.
 # - Data at rest encryption (SQLCipher, AES-256-CBC + HMAC-SHA256)
 #   Optional: if not installed, app falls back to plaintext SQLite (with a warning).
 #   v8.15.1 FIX: sqlcipher3-binary publishes ONLY manylinux wheels on PyPI

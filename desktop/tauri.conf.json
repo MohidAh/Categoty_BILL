@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "BillBook",
-  "version": "8.18.1",
+  "version": "8.18.4",
   "identifier": "com.billbook.app",
   "build": {
     "frontendDist": "../app/static",
@@ -36,7 +36,12 @@
       "icons/icon.ico"
     ],
     "externalBin": ["binaries/billbook_sidecar"],
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "windows": {
+      "nsis": {
+        "installerHooks": "./installer-hooks.nsh"
+      }
+    }
   },
   "plugins": {
     "updater": {

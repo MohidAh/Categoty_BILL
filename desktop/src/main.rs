@@ -60,6 +60,20 @@ use std::time::Duration;
 //      failed with "Error opening file for writing" (v8.17.13 incident).
 //   2. Every NORMAL app close also leaked a zombie backend process
 //      (the mysterious port-8000 conflicts).
+//
+// v8.18.2 ZOMBIE SWEEP + UPDATE REORDER: killing OUR OWN child is not
+// enough — machines that ran pre-v8.17.14 builds still carry sidecar
+// zombies from those versions (they hold port 8000 AND lock the exe,
+// which is why updates STILL failed with "Error opening file for
+// writing" even after v8.17.14). Fixes:
+//   - On startup: taskkill any leftover billbook_sidecar.exe before we
+//     spawn our own (also guarantees port 8000 is free for us).
+//   - Updater: DOWNLOAD first (POS stays usable), THEN kill the sidecar
+//     (child handle + name-based tree kill + short lock-release wait),
+//     THEN run the installer. If the install fails we restart the app
+//     so the shop is never left with a dead backend.
+//   - The NSIS installer itself also sweeps (desktop/installer-hooks.nsh)
+//     so even updates launched by OLD app versions can't hit the lock.
 static SIDECAR_CHILD: OnceLock<Mutex<Option<CommandChild>>> = OnceLock::new();
 
 /// True while the auto-updater is replacing the app: the sidecar's death
@@ -79,6 +93,29 @@ fn kill_sidecar() -> bool {
         .and_then(|mut guard| guard.take())
         .map(|child| child.kill().is_ok())
         .unwrap_or(false)
+}
+
+/// v8.18.2: force-kill EVERY billbook_sidecar.exe process tree by NAME,
+/// not just our own child handle. Covers:
+///   - zombie sidecars leaked by pre-v8.17.14 builds (they lock the exe
+///     file — the "retry" update failures — and hog port 8000)
+///   - PyInstaller onefile children orphaned when only the bootloader
+///     parent is killed (/T takes down the whole descendant chain)
+/// Fails silently when no such process exists (taskkill exit code 128).
+/// CREATE_NO_WINDOW: taskkill is a console app and must never flash a
+/// black cmd window at shop staff.
+#[cfg(windows)]
+fn taskkill_sidecar_tree() -> bool {
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    match std::process::Command::new("taskkill")
+        .args(["/F", "/T", "/IM", "billbook_sidecar.exe"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .output()
+    {
+        Ok(out) => out.status.success(),
+        Err(_) => false,
+    }
 }
 
 fn main() {
@@ -125,6 +162,16 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
             // --- Spawn the sidecar binary ------------------------------------
+            // v8.18.2: first sweep away any zombie sidecar left behind by
+            // pre-v8.17.14 builds (they leaked one on every app close). A
+            // zombie holds port 8000 — forcing us onto 8001+, which broke
+            // the Google OAuth redirect — and locks billbook_sidecar.exe,
+            // which is what makes updates fail with "Error opening file
+            // for writing". Kill it before spawning our own.
+            #[cfg(windows)]
+            if taskkill_sidecar_tree() {
+                log(app.handle(), "cleared a leftover sidecar process before starting");
+            }
             // v8.17.10: no more .expect() panics — in a release build (no
             // console) a panic is a completely silent death. Log to file
             // and exit with a written trace instead.
@@ -271,9 +318,13 @@ pub fn run() {
         // the sidecar down with us. RunEvent::Exit is NOT emitted for the
         // updater's std::process::exit - that path calls kill_sidecar()
         // explicitly above.
+        // v8.18.2: the name-based tree sweep makes this airtight — no
+        // orphaned backend can outlive the app on any exit path.
         .run(|_app, event| {
             if let tauri::RunEvent::Exit = event {
-                kill_sidecar();
+                let _ = kill_sidecar();
+                #[cfg(windows)]
+                taskkill_sidecar_tree();
             }
         });
 }
@@ -387,31 +438,48 @@ async fn check_for_updates(app: &tauri::AppHandle) -> tauri_plugin_updater::Resu
         return Ok(());
     }
 
-    // v8.17.14: stop the sidecar BEFORE the installer runs. Otherwise the
-    // updater's std::process::exit orphans it, billbook_sidecar.exe stays
-    // locked, and NSIS fails with "Error opening file for writing".
-    UPDATING.store(true, Ordering::SeqCst);
-    if kill_sidecar() {
-        println!("[billbook-updater] sidecar stopped for update");
-    }
-
+    // v8.18.2 REORDERED: download FIRST while the app (and the POS) stay
+    // fully usable — previously the sidecar was killed before a download
+    // that could take minutes, leaving a frozen-looking shop terminal.
     let mut downloaded: u64 = 0;
     update
-        .download_and_install(
+        .download(
             |chunk_length, content_length| {
                 downloaded += chunk_length as u64;
                 if let Some(total) = content_length {
                     println!("[billbook-updater] {downloaded}/{total} bytes");
                 }
             },
-            || println!("[billbook-updater] download finished; starting installer"),
+            || println!("[billbook-updater] download finished"),
         )
         .await?;
 
-    // On Windows, download_and_install() exits the process (std::process::exit)
-    // right after launching the NSIS installer, so this line is unreachable
-    // there. The installer was launched with /P /R: passive UI + relaunch.
-    // On macOS/Linux we restart explicitly.
+    // v8.17.14 + v8.18.2: stop the sidecar BEFORE the installer runs,
+    // in three layers: (1) our child handle, (2) a name-based tree kill
+    // that also catches zombies leaked by pre-v8.17.14 builds and any
+    // orphaned onefile children, (3) a short wait so Windows actually
+    // releases the exe file lock before NSIS opens it for writing.
+    UPDATING.store(true, Ordering::SeqCst);
+    let _ = kill_sidecar();
+    #[cfg(windows)]
+    {
+        taskkill_sidecar_tree();
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    println!("[billbook-updater] sidecar stopped; launching installer");
+
+    // On Windows, install() launches the NSIS installer and exits the
+    // process right after, so anything below it is unreachable there.
+    // If launching the installer FAILS, we restart the app: the sidecar
+    // is already dead at this point and the shop must not be left with
+    // a dead backend — the update is simply offered again on next start.
+    if let Err(e) = update.install().await {
+        println!("[billbook-updater] install failed: {e}");
+        app.restart();
+    }
+
+    // macOS/Linux: install() replaced the app bundle in place — restart
+    // into the new version explicitly.
     #[cfg(not(windows))]
     app.restart();
     Ok(())

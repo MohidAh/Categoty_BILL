@@ -441,8 +441,11 @@ async fn check_for_updates(app: &tauri::AppHandle) -> tauri_plugin_updater::Resu
     // v8.18.2 REORDERED: download FIRST while the app (and the POS) stay
     // fully usable — previously the sidecar was killed before a download
     // that could take minutes, leaving a frozen-looking shop terminal.
+    // v8.18.4 FIX: tauri-plugin-updater 2.10 split download()/install() —
+    // install() now takes the downloaded bytes and is NOT async. The old
+    // `update.install().await` form no longer compiles (E0061 + E0277).
     let mut downloaded: u64 = 0;
-    update
+    let installer_bytes = update
         .download(
             |chunk_length, content_length| {
                 downloaded += chunk_length as u64;
@@ -473,7 +476,7 @@ async fn check_for_updates(app: &tauri::AppHandle) -> tauri_plugin_updater::Resu
     // If launching the installer FAILS, we restart the app: the sidecar
     // is already dead at this point and the shop must not be left with
     // a dead backend — the update is simply offered again on next start.
-    if let Err(e) = update.install().await {
+    if let Err(e) = update.install(installer_bytes) {
         println!("[billbook-updater] install failed: {e}");
         app.restart();
     }

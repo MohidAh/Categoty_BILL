@@ -57,12 +57,15 @@ class AppearanceIn(BaseModel):
     # v8.15.0 (design.md): serif display headlines + radius scale
     serif_headings: bool | None = None
     radius: str | None = None
+    # v8.18.7: whole-system color scheme (canvas + tones + suggested accent)
+    color_scheme: str | None = None
 
 
 # v8.15.0 (design.md): canonical defaults for the Claude-warm design system.
 # Cream canvas is the brand default floor, coral (#cc785c) the brand accent.
 APPEARANCE_DEFAULTS = {
     "theme": "light",
+    "color_scheme": "warm",
     "accent_color": "#cc785c",
     "density": "comfortable",
     "font_scale": "100",
@@ -71,6 +74,9 @@ APPEARANCE_DEFAULTS = {
 }
 APPEARANCE_RADIUS_OPTIONS = ("compact", "standard", "roomy")
 APPEARANCE_DENSITY_OPTIONS = ("comfortable", "compact")
+# v8.18.7: valid color scheme ids (must mirror APPEARANCE_SCHEME_PRESETS
+# in app/static/js/utils.js — the frontend owns the actual token values).
+APPEARANCE_SCHEME_OPTIONS = ("warm", "ocean", "forest", "violet", "slate")
 
 
 
@@ -97,6 +103,7 @@ def get_appearance() -> Any:
     from ..db import get_setting
     return {
         "theme": get_setting("appearance_theme", APPEARANCE_DEFAULTS["theme"]),
+        "color_scheme": get_setting("appearance_scheme", APPEARANCE_DEFAULTS["color_scheme"]),
         "accent_color": get_setting("appearance_accent", APPEARANCE_DEFAULTS["accent_color"]),
         "density": get_setting("appearance_density", APPEARANCE_DEFAULTS["density"]),
         "font_scale": get_setting("appearance_font_scale", APPEARANCE_DEFAULTS["font_scale"]),
@@ -119,6 +126,8 @@ def set_appearance(payload: AppearanceIn) -> Any:
         raise HTTPException(status_code=400, detail=f"radius must be one of {APPEARANCE_RADIUS_OPTIONS}")
     if payload.density is not None and payload.density not in APPEARANCE_DENSITY_OPTIONS:
         raise HTTPException(status_code=400, detail=f"density must be one of {APPEARANCE_DENSITY_OPTIONS}")
+    if payload.color_scheme is not None and payload.color_scheme not in APPEARANCE_SCHEME_OPTIONS:
+        raise HTTPException(status_code=400, detail=f"color_scheme must be one of {APPEARANCE_SCHEME_OPTIONS}")
     if payload.font_scale is not None:
         try:
             fs = int(payload.font_scale)
@@ -146,6 +155,9 @@ def set_appearance(payload: AppearanceIn) -> Any:
         if payload.radius is not None and payload.radius in APPEARANCE_RADIUS_OPTIONS:
             c.execute("INSERT INTO settings(key, value) VALUES('appearance_radius', ?) "
                       "ON CONFLICT(key) DO UPDATE SET value = ?", (payload.radius, payload.radius))
+        if payload.color_scheme is not None and payload.color_scheme in APPEARANCE_SCHEME_OPTIONS:
+            c.execute("INSERT INTO settings(key, value) VALUES('appearance_scheme', ?) "
+                      "ON CONFLICT(key) DO UPDATE SET value = ?", (payload.color_scheme, payload.color_scheme))
     return {"ok": True}
 
 

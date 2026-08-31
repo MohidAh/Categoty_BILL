@@ -4,7 +4,8 @@ import { route, navigate, reload } from '../router.js';
 import { api, apiPost, apiPut, apiDelete } from '../api.js';
 import { $, $$, esc, fmt, fmtRs, toast, showLoading, hideLoading,
          openModal, closeModal, skeletonCards, errorBox, emptyState, icon, iconHtml,
-         applyAppearance, cacheAppearance, APPEARANCE_DEFAULTS, APPEARANCE_ACCENT_PRESETS } from '../utils.js';
+         applyAppearance, cacheAppearance, APPEARANCE_DEFAULTS, APPEARANCE_ACCENT_PRESETS,
+         APPEARANCE_SCHEME_PRESETS } from '../utils.js';
 
 const SVG = {
   settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/></svg>',
@@ -563,6 +564,7 @@ route('/settings/appearance', async (el) => {
   // Local state — normalized against design.md defaults
   const st = {
     theme: cfg.theme === 'dark' ? 'dark' : 'light',
+    color_scheme: APPEARANCE_SCHEME_PRESETS.some(s => s.id === cfg.color_scheme) ? cfg.color_scheme : 'warm',
     accent_color: /^#[0-9a-fA-F]{6}$/.test(cfg.accent_color || '') ? cfg.accent_color : APPEARANCE_DEFAULTS.accent_color,
     serif_headings: !(cfg.serif_headings === false || cfg.serif_headings === '0'),
     radius: ['compact', 'standard', 'roomy'].includes(cfg.radius) ? cfg.radius : 'standard',
@@ -633,8 +635,25 @@ route('/settings/appearance', async (el) => {
     </div>
 
     <div class="card mb-4">
+      <h3>Color Scheme</h3>
+      <p class="text-sm text-dim mt-2">Restyles the WHOLE system — backgrounds, cards, borders, text tones and a matching accent. The accent itself stays customizable below.</p>
+      <div class="grid grid-3 mt-3" id="ap-scheme-cards">
+        ${APPEARANCE_SCHEME_PRESETS.map(s => `
+          <button type="button" class="ap-scheme-card ${st.color_scheme === s.id ? 'selected' : ''}" data-scheme="${s.id}" title="${s.name} — ${s.desc}">
+            <span class="ap-scheme-dots">
+              <span class="ap-scheme-dot" style="background:${s.light.bg};border:1px solid ${s.light.border}"></span>
+              <span class="ap-scheme-dot" style="background:${s.light.elevated};border:1px solid ${s.light.border}"></span>
+              <span class="ap-scheme-dot ap-scheme-dot-accent" style="background:${s.accent}"></span>
+              <span class="ap-scheme-dot" style="background:${s.dark.bg};border:1px solid ${s.dark.border}"></span>
+            </span>
+            <span class="ap-scheme-name">${s.name}${s.id === 'warm' ? ' <span class="text-dim text-sm">(default)</span>' : ''}</span>
+          </button>`).join('')}
+      </div>
+    </div>
+
+    <div class="card mb-4">
       <h3>Brand Accent</h3>
-      <p class="text-sm text-dim mt-2">Used for primary buttons, links, and highlights. Coral is the design signature.</p>
+      <p class="text-sm text-dim mt-2">Used for primary buttons, links, and highlights. Picking a scheme above resets this to its matching accent.</p>
       <div class="flex gap-3 mt-3 items-center flex-wrap" id="ap-accent-presets">
         ${APPEARANCE_ACCENT_PRESETS.map(p => `
           <button type="button" class="ap-swatch ${st.accent_color.toLowerCase() === p.value ? 'selected' : ''}"
@@ -766,6 +785,19 @@ route('/settings/appearance', async (el) => {
     };
   });
 
+  // ── Color scheme cards ─────────────────────────────────────────────
+  const setScheme = (id) => {
+    const s = APPEARANCE_SCHEME_PRESETS.find(x => x.id === id);
+    if (!s) return;
+    st.color_scheme = id;
+    $$('.ap-scheme-card').forEach(c => c.classList.toggle('selected', c.dataset.scheme === id));
+    // A scheme brings its own matching accent — the accent pickers below
+    // (and the user's freedom to override) stay fully functional.
+    setAccent(s.accent);
+    liveApply(); markDirty('appearance');
+  };
+  $$('.ap-scheme-card').forEach(c => { c.onclick = () => setScheme(c.dataset.scheme); });
+
   // ── Accent presets + custom ───────────────────────────────────────
   const setAccent = (hex) => {
     st.accent_color = hex;
@@ -822,6 +854,7 @@ route('/settings/appearance', async (el) => {
     try {
       await apiPost('/api/appearance', {
         theme: st.theme,
+        color_scheme: st.color_scheme,
         accent_color: st.accent_color,
         density: st.density,
         font_scale: st.font_scale,
@@ -838,11 +871,12 @@ route('/settings/appearance', async (el) => {
   // ── Reset to design.md defaults ───────────────────────────────────
   $('#ap-reset-btn').onclick = async () => {
     Object.assign(st, {
-      theme: 'light', accent_color: '#cc785c', serif_headings: true,
+      theme: 'light', color_scheme: 'warm', accent_color: '#cc785c', serif_headings: true,
       radius: 'standard', density: 'comfortable', font_scale: '100',
     });
     // refresh the controls to match
     $$('.appearance-theme-card').forEach(c => c.classList.toggle('selected', c.dataset.theme === 'light'));
+    $$('.ap-scheme-card').forEach(c => c.classList.toggle('selected', c.dataset.scheme === 'warm'));
     $$('.ap-swatch').forEach(s => s.classList.toggle('selected', s.dataset.accent === '#cc785c'));
     $('#ap-accent').value = '#cc785c'; $('#ap-accent-text').value = '#cc785c';
     $$('#ap-serif-seg .ap-seg-btn').forEach(b => b.classList.toggle('selected', b.dataset.serif === 'on'));
@@ -851,7 +885,7 @@ route('/settings/appearance', async (el) => {
     $('#ap-font-scale').value = '100'; $('#ap-font-scale-label').textContent = '100%';
     liveApply();
     try {
-      await apiPost('/api/appearance', { theme: st.theme, accent_color: st.accent_color, density: st.density, font_scale: st.font_scale, serif_headings: true, radius: st.radius });
+      await apiPost('/api/appearance', { theme: st.theme, color_scheme: st.color_scheme, accent_color: st.accent_color, density: st.density, font_scale: st.font_scale, serif_headings: true, radius: st.radius });
       cacheAppearance({ ...st, serif_headings: '1' });
       dirty.appearance = false; $('#ap-dirty-note').textContent = '';
       toast('Reset to design defaults', 'success');

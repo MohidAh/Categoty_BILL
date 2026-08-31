@@ -13,4 +13,5 @@ export {
   normalizeAppearance,
   APPEARANCE_DEFAULTS,
   APPEARANCE_ACCENT_PRESETS,
+  APPEARANCE_SCHEME_PRESETS,
 } from '../utils.js';

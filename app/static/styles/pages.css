@@ -612,6 +612,16 @@ body.bill-resizing * { cursor: inherit !important; }
 }
 .page-section-label svg { color: var(--accent-text); }
 
+/* ---------- Item serial numbers (v8.18.7) ---------- */
+/* Split rows carry sub-serials (3.1, 3.2 …) — rendered smaller and dimmer
+   so the eye still groups them under the parent item. */
+.i-sr { text-align: center; font-variant-numeric: tabular-nums; }
+.i-sr-sub {
+  font-size: 11px;
+  color: var(--text-quaternary, #999);
+  font-style: italic;
+}
+
 /* ---------- Billwise report ---------- */
 .billwise-section {
   margin-bottom: 20px;

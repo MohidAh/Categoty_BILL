@@ -1082,6 +1082,41 @@
 .ap-radius-shape[data-r="standard"] { border-radius: 7px; }
 .ap-radius-shape[data-r="roomy"]    { border-radius: 12px; }
 
+/* v8.18.7: whole-system color scheme cards */
+.ap-scheme-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  text-align: left;
+  padding: 12px 14px;
+  background: var(--surface, var(--surface-card));
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md, var(--radius));
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.ap-scheme-card:hover { border-color: var(--border-strong); }
+.ap-scheme-card.selected {
+  border-color: var(--accent, var(--coral));
+  background: var(--accent-soft, var(--coral-soft));
+}
+.ap-scheme-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.ap-scheme-dot {
+  width: 18px; height: 18px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.ap-scheme-dot-accent {
+  border-radius: 9999px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+.ap-scheme-name { font-size: 13px; font-weight: 600; color: var(--text); }
+
 /* Live preview mini-mockup */
 .ap-preview {
   background: var(--canvas);

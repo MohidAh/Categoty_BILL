@@ -114,12 +114,12 @@ route('/bills/', async (el, path) => {
               <thead>
                 <tr>
                   <th style="width:28px"><input type="checkbox" id="verify-all-cb" title="Mark all verified"></th>
-                  <th style="width:28px">Sr</th>
+                  <th style="width:34px">Sr</th>
                   <th class="col-required sortable" data-sort="raw">Item Name ↕</th>
                   <th class="col-extra col-code sortable" data-sort="code">Code ↕</th>
-                  <th class="col-required table-num sortable" data-sort="price">Unit Cost ↕</th>
                   <th class="col-required table-num sortable" data-sort="qty">Qty ↕</th>
                   <th class="col-required">Unit</th>
+                  <th class="col-required table-num sortable" data-sort="price">Unit Cost ↕</th>
                   <th class="col-extra col-pieces">Pieces</th>
                   <th class="col-extra col-category">Category</th>
                   <th class="col-required table-num">Sell Price</th>
@@ -239,10 +239,14 @@ route('/bills/', async (el, path) => {
     recalcRow(el);
   }
 
-  function renderRow(it = {}) {
+  function renderRow(it = {}, opts = {}) {
     const tr = document.createElement('tr');
     tr.className = 'item-row';
     tr.dataset.page = it.page_no || '';
+    if (opts.splitChild) {
+      tr.dataset.splitChild = '1';
+      if (opts.parentSr) tr.dataset.parentSr = String(opts.parentSr);
+    }
     const catId = it.category_id || '';
     const conf = it.confidence;
     // Confidence-based row class
@@ -259,6 +263,7 @@ route('/bills/', async (el, path) => {
     }
     tr.innerHTML = `
       <td style="text-align:center"><input type="checkbox" class="i-verified" title="Mark as verified"></td>
+      <td class="i-sr text-dim"></td>
       <td class="col-required">
         <div class="flex items-center gap-1">
           ${confHtml}
@@ -266,12 +271,12 @@ route('/bills/', async (el, path) => {
         </div>
       </td>
       <td class="col-extra col-code"><input class="input i-code" value="${esc(it.item_code || '')}" style="width:80px" placeholder="SKU"></td>
-      <td class="col-required table-num"><input class="input i-price" type="number" step="0.01" value="${it.price ?? 0}" style="width:85px;text-align:right" placeholder="0"></td>
       <td class="col-required table-num"><input class="input i-qty" type="number" step="0.01" value="${it.qty ?? 0}" style="width:60px;text-align:right" placeholder="0"></td>
       <td class="col-required"><select class="select i-unit" style="width:75px">
         <option value="pcs" ${it.unit === 'pcs' ? 'selected' : ''}>pcs</option>
         <option value="dozen" ${it.unit === 'dozen' ? 'selected' : ''}>dozen</option>
       </select></td>
+      <td class="col-required table-num"><input class="input i-price" type="number" step="0.01" value="${it.price ?? 0}" style="width:85px;text-align:right" placeholder="0"></td>
       <td class="col-extra col-pieces table-num i-pieces text-dim">0</td>
       <td class="col-extra col-category"><select class="select i-cat" style="width:120px">
         <option value="">—</option>
@@ -362,10 +367,16 @@ route('/bills/', async (el, path) => {
         const totalSell = prices.reduce((s, p) => s + p, 0);
         const totalCost = price * qty;
 
+        // Capture WHERE the original row sits BEFORE removing it, so the
+        // split rows land exactly there (not at the end of the table) — and
+        // WHICH serial it held, so the splits become 3.1, 3.2 (parent SR).
+        const before = tr.nextSibling;
+        const parentSr = parseInt(tr.querySelector('.i-sr')?.textContent) || 0;
         // Remove the original row
         tr.remove();
 
-        // Insert split rows in its place
+        // Insert split rows in its place (marked as split children so they
+        // get sub-serial numbers like 3.1, 3.2 …)
         for (const sp of prices) {
           const cat = activeCats.find(c => c.sell_price === sp);
           const ratio = sp / totalSell;
@@ -377,7 +388,7 @@ route('/bills/', async (el, path) => {
             unit: 'pcs',
             category_id: cat ? cat.id : null,
             page_no: tr.dataset.page || null,
-          });
+          }, { before, splitChild: true, parentSr });
         }
 
         closeModal();
@@ -387,7 +398,14 @@ route('/bills/', async (el, path) => {
       };
     });
 
-    itemsBody.appendChild(tr);
+    // Insert position: `opts.before` is the node the new row must land in
+    // front of (captured by the split flow BEFORE the parent row is removed).
+    // Falls back to append at the end (default / Add Row).
+    if (opts.before && opts.before.parentNode === itemsBody) {
+      itemsBody.insertBefore(tr, opts.before);
+    } else {
+      itemsBody.appendChild(tr);
+    }
     recalcRow(tr.querySelector('.i-price'));
   }
 
@@ -404,16 +422,29 @@ route('/bills/', async (el, path) => {
   sortedItems.forEach(renderRow);
   recalcGrand();
 
-  // Add serial numbers to each row
+  // Add serial numbers to each row. Split rows (marked data-split-child)
+  // carry the ORIGINAL item's serial with a sub-index: if the item was
+  // SR 3, its splits become 3.1, 3.2 … and the following rows keep their
+  // numbers (the main counter continues from the parent's SR).
   function updateSerialNumbers() {
-    $$('.item-row').forEach((tr, idx) => {
-      let srCell = tr.querySelector('.i-sr');
-      if (!srCell) {
-        srCell = document.createElement('td');
-        srCell.className = 'i-sr text-dim';
-        tr.insertBefore(srCell, tr.firstChild);
+    let main = 0;    // last parent SR
+    let sub = 0;     // sub-index within the current parent
+    $$('.item-row').forEach(tr => {
+      const srCell = tr.querySelector('.i-sr');
+      if (!srCell) return;
+      if (tr.dataset.splitChild === '1') {
+        // Anchor to the parent's serial, captured at split time
+        const p = parseInt(tr.dataset.parentSr);
+        if (!isNaN(p) && p > main) main = p;
+        sub += 1;
+        srCell.textContent = `${main}.${sub}`;
+        srCell.classList.add('i-sr-sub');
+      } else {
+        main += 1;
+        sub = 0;
+        srCell.textContent = main;
+        srCell.classList.remove('i-sr-sub');
       }
-      srCell.textContent = idx + 1;
     });
   }
 
@@ -433,7 +464,7 @@ route('/bills/', async (el, path) => {
         // hardcoded 600px-per-page estimate. This fixes the drift where
         // "View page 4" showed page 3 (because images have varying heights).
         const hasPage = b.pages[pageNum - 1];
-        headerRow.innerHTML = `<td colspan="12">
+        headerRow.innerHTML = `<td colspan="13">
           <div class="page-section-label">
             ${icon('image', 14)} Page ${esc(pg)}
             ${hasPage ? `<button class="btn btn-ghost btn-sm" id="view-page-${pageNum}" title="Scroll image to page ${pageNum}">View image →</button>` : ''}
@@ -468,9 +499,9 @@ route('/bills/', async (el, path) => {
   insertPageHeaders();
   updateSerialNumbers();
 
-  // Row add buttons
-  $('#add-row-btn').addEventListener('click', () => renderRow());
-  $('#add-5-rows-btn').addEventListener('click', () => { for (let i = 0; i < 5; i++) renderRow(); });
+  // Row add buttons — always renumber so the new row gets its Sr
+  $('#add-row-btn').addEventListener('click', () => { renderRow(); updateSerialNumbers(); });
+  $('#add-5-rows-btn').addEventListener('click', () => { for (let i = 0; i < 5; i++) renderRow(); updateSerialNumbers(); });
 
   // Toggle extra columns
   let extraColsVisible = true; // default: show all

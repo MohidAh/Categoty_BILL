@@ -217,6 +217,7 @@ window.closeModal = closeModal;
 
 export const APPEARANCE_DEFAULTS = {
   theme: 'light',            // design.md: cream canvas is the brand default floor
+  color_scheme: 'warm',      // v8.18.7: whole-system color scheme (canvas + tones + default accent)
   accent_color: '#cc785c',   // design.md: signature coral primary
   density: 'comfortable',
   font_scale: '100',
@@ -224,13 +225,46 @@ export const APPEARANCE_DEFAULTS = {
   radius: 'standard',        // design.md rounded scale: 4/6/8/12/16
 };
 
+// v8.18.7: Whole-system color schemes. Each scheme restyles the entire
+// token set — canvas/surface/borders/text tones for BOTH light and dark —
+// and suggests a matching accent. The accent itself stays user-definable
+// (the Brand Accent picker overrides the scheme's suggestion).
+// 'warm' replicates the previous default exactly, so existing installs
+// see zero visual change until they pick a scheme.
+export const APPEARANCE_SCHEME_PRESETS = [
+  {
+    id: 'warm', name: 'Coral Warm', accent: '#cc785c', desc: 'Creams & coral — the BillBook signature',
+    light: { bg: '#FFFFFF', surface: '#FFFFFF', elevated: '#F7F8F8', hover: 'rgba(0,0,0,0.03)', bgInput: 'rgba(0,0,0,0.02)', border: 'rgba(0,0,0,0.08)', borderStrong: 'rgba(0,0,0,0.12)', borderSubtle: 'rgba(0,0,0,0.04)', text: '#08090A', text2: '#62666D', muted: '#8A8F98', textQuat: '#D0D6E0' },
+    dark:  { bg: '#08090A', surface: '#0F1011', elevated: '#18191A', hover: 'rgba(255,255,255,0.05)', bgInput: 'rgba(255,255,255,0.02)', border: 'rgba(255,255,255,0.05)', borderStrong: 'rgba(255,255,255,0.08)', borderSubtle: 'rgba(255,255,255,0.04)', text: '#F7F8F8', text2: '#8A8F98', muted: '#62666D', textQuat: '#3E3E44' },
+  },
+  {
+    id: 'ocean', name: 'Ocean Blue', accent: '#3E7BB6', desc: 'Cool blues — calm and professional',
+    light: { bg: '#F5F8FB', surface: '#FFFFFF', elevated: '#EBF1F6', hover: 'rgba(31,59,92,0.04)', bgInput: 'rgba(31,59,92,0.03)', border: 'rgba(31,59,92,0.10)', borderStrong: 'rgba(31,59,92,0.16)', borderSubtle: 'rgba(31,59,92,0.05)', text: '#0C1620', text2: '#55677A', muted: '#7C8DA0', textQuat: '#C9D4DE' },
+    dark:  { bg: '#080B10', surface: '#0E141B', elevated: '#16202B', hover: 'rgba(160,200,255,0.06)', bgInput: 'rgba(160,200,255,0.03)', border: 'rgba(160,200,255,0.07)', borderStrong: 'rgba(160,200,255,0.11)', borderSubtle: 'rgba(160,200,255,0.05)', text: '#F0F6FC', text2: '#8DA0B5', muted: '#5F7183', textQuat: '#36444F' },
+  },
+  {
+    id: 'forest', name: 'Forest Sage', accent: '#4E7D62', desc: 'Soft greens — natural and restful',
+    light: { bg: '#F6F8F5', surface: '#FFFFFF', elevated: '#ECF1EA', hover: 'rgba(38,66,47,0.04)', bgInput: 'rgba(38,66,47,0.03)', border: 'rgba(38,66,47,0.10)', borderStrong: 'rgba(38,66,47,0.16)', borderSubtle: 'rgba(38,66,47,0.05)', text: '#101812', text2: '#5A6B5E', muted: '#7E8F82', textQuat: '#CBD5CC' },
+    dark:  { bg: '#080D09', surface: '#0E1510', elevated: '#16211A', hover: 'rgba(170,230,190,0.05)', bgInput: 'rgba(170,230,190,0.03)', border: 'rgba(170,230,190,0.06)', borderStrong: 'rgba(170,230,190,0.10)', borderSubtle: 'rgba(170,230,190,0.05)', text: '#F2F8F3', text2: '#93A898', muted: '#62736A', textQuat: '#38443C' },
+  },
+  {
+    id: 'violet', name: 'Violet Dusk', accent: '#7B6BB5', desc: 'Lavender & plum — distinctive and modern',
+    light: { bg: '#F8F6FA', surface: '#FFFFFF', elevated: '#F0ECF5', hover: 'rgba(76,60,110,0.04)', bgInput: 'rgba(76,60,110,0.03)', border: 'rgba(76,60,110,0.10)', borderStrong: 'rgba(76,60,110,0.16)', borderSubtle: 'rgba(76,60,110,0.05)', text: '#131020', text2: '#62597A', muted: '#867C9E', textQuat: '#D0CADF' },
+    dark:  { bg: '#0C0A10', surface: '#131019', elevated: '#1E1926', hover: 'rgba(200,180,255,0.06)', bgInput: 'rgba(200,180,255,0.03)', border: 'rgba(200,180,255,0.07)', borderStrong: 'rgba(200,180,255,0.11)', borderSubtle: 'rgba(200,180,255,0.05)', text: '#F6F4FB', text2: '#9A93AE', muted: '#6B657F', textQuat: '#403B50' },
+  },
+  {
+    id: 'slate', name: 'Slate Mono', accent: '#5A6474', desc: 'Neutral grays — understated utility',
+    light: { bg: '#F7F8F9', surface: '#FFFFFF', elevated: '#EEF0F2', hover: 'rgba(30,36,44,0.04)', bgInput: 'rgba(30,36,44,0.03)', border: 'rgba(30,36,44,0.10)', borderStrong: 'rgba(30,36,44,0.16)', borderSubtle: 'rgba(30,36,44,0.05)', text: '#0E1116', text2: '#59616C', muted: '#7F8894', textQuat: '#CDD3DA' },
+    dark:  { bg: '#0A0B0D', surface: '#101114', elevated: '#191B1F', hover: 'rgba(200,210,220,0.05)', bgInput: 'rgba(200,210,220,0.03)', border: 'rgba(200,210,220,0.06)', borderStrong: 'rgba(200,210,220,0.10)', borderSubtle: 'rgba(200,210,220,0.05)', text: '#F5F7F8', text2: '#8E959D', muted: '#646A72', textQuat: '#3C4046' },
+  },
+];
+
 // design.md accent presets (colors: primary, accent-teal, accent-amber)
 export const APPEARANCE_ACCENT_PRESETS = [
   { name: 'Coral',   value: '#cc785c' },
   { name: 'Teal',    value: '#5db8a6' },
   { name: 'Amber',   value: '#e8a55a' },
 ];
-
 const APPEARANCE_RADIUS = {
   compact:  ['4px', '6px', '8px',  '10px', '12px'],
   standard: ['6px', '8px', '10px', '12px', '16px'],
@@ -257,6 +291,7 @@ function _alpha(hex, a) {
 export function normalizeAppearance(cfg) {
   const c = { ...APPEARANCE_DEFAULTS, ...(cfg || {}) };
   c.theme = (c.theme === 'dark') ? 'dark' : 'light';
+  if (!APPEARANCE_SCHEME_PRESETS.some(s => s.id === c.color_scheme)) c.color_scheme = 'warm';
   if (!/^#[0-9a-fA-F]{6}$/.test(c.accent_color || '')) c.accent_color = APPEARANCE_DEFAULTS.accent_color;
   c.density = (c.density === 'compact') ? 'compact' : 'comfortable';
   const fs = parseInt(c.font_scale, 10);
@@ -273,6 +308,29 @@ export function applyAppearance(cfg) {
   // Theme
   root.setAttribute('data-theme', c.theme);
   localStorage.setItem('bb-theme', c.theme);
+
+  // v8.18.7: Whole-system color scheme. Canvas/surface/border/text tokens
+  // for the ACTIVE theme are set as inline root styles, which override both
+  // the :root (dark) and [data-theme="light"] blocks in design-system.css —
+  // every component that consumes var(--bg/--surface/--text…) restyles.
+  const scheme = APPEARANCE_SCHEME_PRESETS.find(s => s.id === c.color_scheme) || APPEARANCE_SCHEME_PRESETS[0];
+  const toks = c.theme === 'dark' ? scheme.dark : scheme.light;
+  root.setAttribute('data-scheme', scheme.id);
+  const canvasVars = {
+    '--bg': toks.bg,
+    '--surface': toks.surface,
+    '--elevated': toks.elevated,
+    '--hover': toks.hover,
+    '--bg-input': toks.bgInput,
+    '--border': toks.border,
+    '--border-strong': toks.borderStrong,
+    '--border-subtle': toks.borderSubtle,
+    '--text': toks.text,
+    '--text-2': toks.text2,
+    '--muted': toks.muted,
+    '--text-quaternary': toks.textQuat,
+  };
+  for (const [k, v] of Object.entries(canvasVars)) root.style.setProperty(k, v);
 
   // Density + typography + radius flags (CSS hooks live in base.css)
   root.setAttribute('data-density', c.density);
@@ -313,9 +371,9 @@ export function applyAppearance(cfg) {
   root.style.setProperty('--radius-card', r[2]);
   root.style.setProperty('--radius-modal', r[3]);
 
-  // Mobile chrome color
+  // Mobile chrome color — track the scheme's canvas (not a hardcoded cream)
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.content = (c.theme === 'dark') ? '#181715' : '#faf9f5';
+  if (meta) meta.content = toks.bg;
   return c;
 }
 

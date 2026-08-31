@@ -1,7 +1,7 @@
 // v5.0 Phase 7 — Cash Buckets page (Reports app)
 import { route } from '../router.js';
 import { api, apiPost } from '../api.js';
-import { $, esc, fmtRs, fmtDate, toast, openModal, closeModal,
+import { $, esc, fmt, fmtRs, fmtDate, toast, openModal, closeModal,
          skeletonCards, errorBox } from '../utils.js';
 
 const SVG = {

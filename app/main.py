@@ -278,6 +278,7 @@ async def require_login(request: Request, call_next):
     public_paths = {"/login", "/api/login", "/api/login/staff", "/api/setup",
                     "/api/setup-status", "/api/setup/state", "/api/setup/wizard",
                     "/setup-wizard", "/favicon.ico",
+                    "/license", "/api/license/status", "/api/license/activate",  # v8.19: license screens are reachable pre-login BY DESIGN
                     "/api/health", "/api/version",  # PR 8: probes — no auth required
                     "/api/devices/pair",  # v6.0: pairing is public (uses code, not session)
                     "/api/hq/branches/register",  # v8.0: branch registration is public (uses 6-digit code)
@@ -344,6 +345,7 @@ async def csrf_protect(request: Request, call_next):
     public_mutating = {
         "/api/login", "/api/login/staff", "/api/setup",
         "/api/setup/wizard", "/api/devices/pair",
+        "/api/license/activate",  # v8.19: license activation (pre-login by design)
         "/api/hq/branches/register",
         "/api/sync/branch-summary", "/api/sync/price-push",
     }
@@ -390,6 +392,40 @@ async def csrf_protect(request: Request, call_next):
     return await call_next(request)
 
 
+# ─── v8.19: License enforcement middleware (one setup = one license) ────────
+# NOTE ON ORDER: Starlette's add_middleware inserts at the FRONT of the
+# stack, so the LAST decorator below is the OUTERMOST middleware — this
+# one must run before require_login and csrf_protect: a locked app should
+# short-circuit as early as possible (no CSRF surface, no login surface).
+from . import licensing as _licensing
+
+# Paths reachable while the app is locked: the license/setup screens, the
+# public probes the Tauri sidecar and watchdogs poll, and static assets.
+_LICENSE_PUBLIC_PATHS = {
+    "/license", "/login", "/setup-wizard", "/favicon.ico",
+    "/api/license/status", "/api/license/activate",
+    "/api/setup", "/api/setup-status", "/api/setup/state", "/api/setup/wizard",
+    "/api/health", "/api/version",   # probes — Tauri sidecar / watchdogs
+    "/api/csrf-token",               # needed by the login page itself
+}
+
+
+@app.middleware("http")
+async def require_license(request: Request, call_next):
+    path = request.url.path
+    if (path in _LICENSE_PUBLIC_PATHS
+            or path.startswith(("/static/", "/pages/"))):
+        return await call_next(request)
+    if not _licensing.is_activated():
+        if path.startswith("/api/"):
+            return JSONResponse(
+                {"error": "license required", "code": "license_required"},
+                status_code=403,
+            )
+        return RedirectResponse("/license")
+    return await call_next(request)
+
+
 # ─── Root route (serves SPA index.html) ───
 @app.get("/")
 def root():
@@ -414,6 +450,7 @@ def get_csrf_token(request: Request):
     X-CSRF-Token header on every mutating request (POST/PUT/DELETE).
     """
     import secrets as _secrets
+    from .security import get_session  # v8.19 fix: was referenced but never imported here (latent 500)
     sess = get_session(request)
     if not sess:
         return JSONResponse({"error": "login required"}, status_code=401)
@@ -450,6 +487,13 @@ def login_page():
 def setup_wizard_page():
     wizard_html = (BASE / "app" / "static" / "setup-wizard.html").read_text(encoding="utf-8")
     return HTMLResponse(wizard_html)
+
+
+# ─── v8.19: License activation page (lock screen) ───
+@app.get("/license")
+def license_page():
+    license_html = (BASE / "app" / "static" / "license.html").read_text(encoding="utf-8")
+    return HTMLResponse(license_html)
 
 
 # ─── PR 8: /api/health — liveness + readiness probe ────────────────────────
@@ -626,6 +670,10 @@ app.include_router(_audit_router.router)
 
 # v8.14.0: Production-hardening routers
 # v8.18.4: Google Drive cloud-backup router removed with the feature.
+# v8.19: License router (status + activation) — public endpoints, see
+# _LICENSE_PUBLIC_PATHS above.
+from .routers import license as _license_router
+app.include_router(_license_router.router)
 from .routers import fbr as _fbr_router
 app.include_router(_fbr_router.router)
 from .routers import digest as _digest_router

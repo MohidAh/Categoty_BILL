@@ -154,7 +154,7 @@ h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; text-align: center; let
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
   </div>
   <h1>Welcome to BillBook</h1>
-  <p class="wizard-sub">Let's set up your shop in 5 quick steps.</p>
+  <p class="wizard-sub">Let's set up your shop in 6 quick steps.</p>
 
   <div class="steps">
     <div class="step-dot active" id="dot-1"></div>
@@ -162,6 +162,7 @@ h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; text-align: center; let
     <div class="step-dot" id="dot-3"></div>
     <div class="step-dot" id="dot-4"></div>
     <div class="step-dot" id="dot-5"></div>
+    <div class="step-dot" id="dot-6"></div>
   </div>
 
   <div id="step-content"></div>
@@ -172,6 +173,7 @@ h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; text-align: center; let
 // ─── State ─────────────────────────────────────────────────
 var step = 1;
 var state = {
+  licensed: false,               // v8.19: license activated in Step 1
   password: '', passwordConfirm: '',
   businessType: 'wholesale',
   categories: [],
@@ -233,7 +235,7 @@ fetch('/api/setup/state').then(function(r) { return r.json(); }).then(function(s
 
 // ─── Step rendering ────────────────────────────────────────
 function updateDots() {
-  for (var i = 1; i <= 5; i++) {
+  for (var i = 1; i <= 6; i++) {
     var dot = document.getElementById('dot-' + i);
     dot.className = 'step-dot' + (i === step ? ' active' : (i < step ? ' done' : ''));
   }
@@ -243,15 +245,83 @@ function renderStep() {
   updateDots();
   var c = document.getElementById('step-content');
   document.getElementById('err').textContent = '';
-  if (step === 1) renderStep1(c);
-  else if (step === 2) renderStep2(c);
-  else if (step === 3) renderStep3(c);
-  else if (step === 4) renderStep4(c);
-  else if (step === 5) renderStep5(c);
+  if (step === 1) renderStepLicense(c);   // v8.19: license gate
+  else if (step === 2) renderStep1(c);    // password
+  else if (step === 3) renderStep2(c);    // business type
+  else if (step === 4) renderStep3(c);    // categories
+  else if (step === 5) renderStep4(c);    // optional AI
+  else if (step === 6) renderStep5(c);    // integrations
+}
+
+// ─── v8.19: Step 1 — License (one setup = one license) ─────────────────
+function renderStepLicense(c) {
+  c.innerHTML = '<label class="wizard-label">Step 1 — License</label>' +
+    '<p style="font-size:12px;color:var(--text-2);margin:0 0 12px">BillBook needs a license for this computer. Send the <b>Setup ID</b> below to your provider and paste the license key you receive.</p>' +
+    '<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">' +
+      '<div id="w-sid" style="flex:1;font-family:var(--font-mono,monospace);font-size:16px;letter-spacing:.05em;background:var(--bg-input);border:1px solid var(--border-strong);border-radius:var(--radius-control);padding:10px;text-align:center;user-select:all">…</div>' +
+      '<button type="button" id="w-copy" class="wizard-btn wizard-btn-secondary" style="flex:0 0 auto;width:auto;padding:0 14px">Copy</button>' +
+    '</div>' +
+    '<textarea id="w-license" class="wizard-input" placeholder="Paste license key — the whole key, even if it wraps over several lines" spellcheck="false" style="min-height:84px;font-family:var(--font-mono,monospace);font-size:12px;resize:vertical"></textarea>' +
+    '<div id="w-lic-state" style="font-size:12px;color:var(--text-2);margin:4px 0 0;min-height:16px"></div>' +
+    '<div class="wizard-nav"><button class="wizard-btn" id="w-next">Activate & Continue →</button></div>';
+
+  var markActive = function(s) {
+    var lic = s.license || {};
+    var info = 'License active ✓' + (lic.no ? ' — license #' + lic.no : '') +
+      (lic.expires_at ? ' · expires ' + lic.expires_at.slice(0, 10) : ' · perpetual');
+    var el = document.getElementById('w-lic-state');
+    el.textContent = info;
+    el.style.color = 'var(--success,#10b981)';
+    document.getElementById('w-license').style.display = 'none';
+    var btn = document.getElementById('w-next');
+    btn.textContent = 'Next →';
+    btn.disabled = false;
+    btn.onclick = function() { state.licensed = true; step = 2; renderStep(); };
+  };
+
+  fetch('/api/license/status').then(function(r) { return r.json(); }).then(function(s) {
+    document.getElementById('w-sid').textContent = s.setup_id || '';
+    if (s.activated) markActive(s);
+  }).catch(function() {});
+
+  document.getElementById('w-copy').onclick = function() {
+    var sid = document.getElementById('w-sid').textContent.trim();
+    var btn = this;
+    var done = function() {
+      btn.textContent = 'Copied ✓';
+      setTimeout(function() { btn.textContent = 'Copy'; }, 1600);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(sid).then(done, done);
+    } else { done(); }
+  };
+
+  document.getElementById('w-next').onclick = function() {
+    var key = document.getElementById('w-license').value.trim();
+    if (!key) { document.getElementById('err').textContent = 'Paste the license key you received first'; return; }
+    var btn = this;
+    btn.textContent = 'Activating...'; btn.disabled = true;
+    fetch('/api/license/activate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ license_key: key })
+    }).then(function(r) {
+      return r.json().then(function(d) { return { ok: r.ok, data: d }; });
+    }).then(function(res) {
+      if (res.ok) { state.licensed = true; step = 2; renderStep(); }
+      else {
+        document.getElementById('err').textContent = res.data.error || 'License activation failed';
+        btn.textContent = 'Activate & Continue →'; btn.disabled = false;
+      }
+    }).catch(function() {
+      document.getElementById('err').textContent = 'Network error — try again';
+      btn.textContent = 'Activate & Continue →'; btn.disabled = false;
+    });
+  };
 }
 
 function renderStep1(c) {
-  c.innerHTML = '<label class="wizard-label">Step 1 — Set Your Password</label>' +
+  c.innerHTML = '<label class="wizard-label">Step 2 — Set Your Password</label>' +
     '<p style="font-size:12px;color:var(--text-2);margin:0 0 12px">This password protects your shop data. Minimum 8 characters.</p>' +
     '<input class="wizard-input" id="w-pw" type="password" placeholder="Password" autofocus>' +
     '<input class="wizard-input" id="w-pw2" type="password" placeholder="Confirm password">' +
@@ -281,7 +351,7 @@ function renderStep1(c) {
     if (v.length < 8) { document.getElementById('err').textContent = 'Password must be at least 8 characters'; return; }
     if (v !== v2) { document.getElementById('err').textContent = 'Passwords do not match'; return; }
     state.password = v;
-    step = 2; renderStep();
+    step = 3; renderStep();
   };
   pw.focus();
 }
@@ -292,7 +362,7 @@ function renderStep2(c) {
     {key: 'retail', name: 'Retail', desc: 'Shop fronts', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7l-8-4-8 4 8 4 8-4z"/><path d="M4 7v10l8 4 8-4V7"/></svg>'},
     {key: 'custom', name: 'Custom', desc: 'Configure later', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9z"/></svg>'},
   ];
-  c.innerHTML = '<label class="wizard-label">Step 2 — Business Type</label>' +
+  c.innerHTML = '<label class="wizard-label">Step 3 — Business Type</label>' +
     '<p style="font-size:12px;color:var(--text-2);margin:0 0 12px">Pick a template to pre-fill your price categories. You can edit them next.</p>' +
     '<div class="biz-types">' +
     types.map(function(t) {
@@ -311,15 +381,15 @@ function renderStep2(c) {
   if (state.categories.length === 0) {
     state.categories = JSON.parse(JSON.stringify(TEMPLATES[state.businessType]));
   }
-  document.getElementById('w-back').onclick = function() { step = 1; renderStep(); };
+  document.getElementById('w-back').onclick = function() { step = 2; renderStep(); };
   document.getElementById('w-next').onclick = function() {
     state.categories = JSON.parse(JSON.stringify(TEMPLATES[state.businessType]));
-    step = 3; renderStep();
+    step = 4; renderStep();
   };
 }
 
 function renderStep3(c) {
-  c.innerHTML = '<label class="wizard-label">Step 3 — Confirm Categories</label>' +
+  c.innerHTML = '<label class="wizard-label">Step 4 — Confirm Categories</label>' +
     '<p style="font-size:12px;color:var(--text-2);margin:0 0 12px">These are your price buttons in the POS. Edit names/prices, add, or remove.</p>' +
     '<div id="cat-list"></div>' +
     '<button class="cat-add" id="w-add-cat">+ Add Category</button>' +
@@ -330,10 +400,10 @@ function renderStep3(c) {
     state.categories.push({code: String.fromCharCode(64 + n), name: 'Category ' + String.fromCharCode(64 + n), sell_price: 100, color: '#3b82f6', sort_order: n});
     renderCatList();
   };
-  document.getElementById('w-back').onclick = function() { step = 2; renderStep(); };
+  document.getElementById('w-back').onclick = function() { step = 3; renderStep(); };
   document.getElementById('w-next').onclick = function() {
     if (state.categories.length === 0) { document.getElementById('err').textContent = 'Add at least one category'; return; }
-    step = 4; renderStep();
+    step = 5; renderStep();
   };
 }
 
@@ -365,7 +435,7 @@ function renderCatList() {
 }
 
 function renderStep4(c) {
-  c.innerHTML = '<label class="wizard-label">Step 4 — Optional AI</label>' +
+  c.innerHTML = '<label class="wizard-label">Step 5 — Optional AI</label>' +
     '<p style="font-size:12px;color:var(--text-2);margin:0 0 12px">Skip these to start selling right away. You can configure them later in Settings.</p>' +
     '<label class="wizard-label" style="font-size:12px">Gemini API Key (optional)</label>' +
     '<input class="wizard-input" id="w-gemini" type="password" placeholder="Paste Gemini key (skipped if empty)" value="' + (state.geminiKey || '') + '">' +
@@ -383,10 +453,10 @@ function renderStep4(c) {
       r.closest('.radio-option').classList.add('selected');
     };
   });
-  document.getElementById('w-back').onclick = function() { step = 3; renderStep(); };
+  document.getElementById('w-back').onclick = function() { step = 4; renderStep(); };
   document.getElementById('w-next').onclick = function() {
     state.geminiKey = document.getElementById('w-gemini').value;
-    step = 5; renderStep();
+    step = 6; renderStep();
   };
 }
 
@@ -406,7 +476,7 @@ function renderStep5(c) {
   };
   var fbrIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>';
   var digestIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
-  c.innerHTML = '<label class="wizard-label">Step 5 — Optional Integrations</label>' +
+  c.innerHTML = '<label class="wizard-label">Step 6 — Optional Integrations</label>' +
     '<p style="font-size:12px;color:var(--text-2);margin:0 0 12px">Everything here is off by default. Pick what you want now — you can change these in Settings later.</p>' +
 
     // ─── FBR ────────────────────────────────────────────────────
@@ -465,7 +535,7 @@ function renderStep5(c) {
     state.digestPhone = this.value;
   };
 
-  document.getElementById('w-back').onclick = function() { step = 4; renderStep(); };
+  document.getElementById('w-back').onclick = function() { step = 5; renderStep(); };
   document.getElementById('w-finish').onclick = function() {
     // Re-read all field values from the DOM (defensive against the user
     // having changed the dropdown without firing onchange in some browsers).

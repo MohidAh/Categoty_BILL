@@ -103,6 +103,13 @@ h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; letter-spacing: -0.02em
       window.location.href = '/setup-wizard';
     }
   }).catch(function() { /* stay on login if check fails */ });
+  // v8.19: if the app is not licensed, everything funnels to the license
+  // activation page (which bounces fresh installs back to the wizard).
+  fetch('/api/license/status').then(function(r) { return r.json(); }).then(function(lic) {
+    if (lic && !lic.activated) {
+      window.location.href = '/license';
+    }
+  }).catch(function() { /* stay on login if check fails */ });
 })();
 document.getElementById('theme-btn').onclick = function() {
   var cur = document.documentElement.getAttribute('data-theme');

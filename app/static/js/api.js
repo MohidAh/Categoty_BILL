@@ -46,6 +46,23 @@ export async function api(url, options = {}) {
     throw new ApiError('Login required', 401);
   }
 
+  // v8.19: license gate — when the app locks (no/expired/moved license),
+  // every API call returns 403 {code: 'license_required'}; funnel the user
+  // to the activation page. Uses a clone so the body stays readable below
+  // for other 403s (RBAC etc.).
+  if (res.status === 403) {
+    try {
+      const peek = await res.clone().json();
+      if (peek && peek.code === 'license_required') {
+        window.location.href = '/license';
+        throw new ApiError('License required', 403, peek);
+      }
+    } catch (e) {
+      if (e instanceof ApiError) throw e;
+      // body wasn't JSON (or empty) — fall through to generic handling
+    }
+  }
+
   if (!res.ok) {
     let msg = res.statusText;
     let detail = null;

@@ -1,0 +1,221 @@
+<!doctype html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BillBook License</title>
+<link rel="manifest" href="/static/manifest.json">
+<meta name="theme-color" content="#181715">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/styles/base.css">
+    <link rel="stylesheet" href="/static/styles/components.css">
+    <link rel="stylesheet" href="/static/styles/layout.css">
+<style>
+/* v8.19: License lock screen — same Linear design system as login (dark-first) */
+* { box-sizing: border-box; }
+:root { color-scheme: dark; }
+html { background: var(--canvas); }
+body {
+  margin: 0; font-family: var(--font-sans); background: var(--bg);
+  color: var(--text);
+  min-height: 100vh; display: grid; place-items: center; padding: 20px;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color .2s var(--ease), color .2s var(--ease);
+}
+.license-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 40px 32px; width: 100%; max-width: 460px;
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+.license-logo {
+  width: 48px; height: 48px; margin: 0 auto 20px;
+  background: var(--primary);
+  border-radius: 12px; display: flex; align-items: center; justify-content: center;
+}
+.license-logo svg { width: 24px; height: 24px; color: white; }
+h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
+.license-sub { color: var(--text-2); font-size: 13px; margin-bottom: 24px; }
+.license-notice {
+  font-size: 12px; line-height: 1.5; text-align: left; color: var(--text-2);
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: var(--radius-control); padding: 10px 12px; margin-bottom: 20px;
+}
+.license-notice b { color: var(--text); }
+.setup-id-label { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 6px; text-align: left; }
+.setup-id-box {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 20px;
+}
+.setup-id-value {
+  flex: 1; font-family: var(--font-mono); font-size: 18px; font-weight: 500;
+  letter-spacing: .06em; color: var(--text);
+  background: var(--bg-input); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control); padding: 11px 14px;
+  user-select: all; text-align: center;
+}
+.copy-btn {
+  height: 44px; padding: 0 14px; background: var(--surface); color: var(--text-2);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-control);
+  cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 600;
+  white-space: nowrap; transition: all .15s var(--ease);
+}
+.copy-btn:hover { background: var(--hover); color: var(--text); }
+.copy-btn.copied { color: var(--success, #10b981); border-color: var(--success, #10b981); }
+.license-input {
+  width: 100%; padding: 12px 14px; background: var(--bg-input);
+  color: var(--text); border: 1px solid var(--border-strong); border-radius: var(--radius-control);
+  font-family: var(--font-mono); font-size: 12px; margin-bottom: 12px;
+  transition: border-color .15s, box-shadow .15s;
+  min-height: 88px; resize: vertical; line-height: 1.6;
+}
+.license-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
+.license-input::placeholder { color: var(--muted); font-family: var(--font-sans); font-size: 13px; }
+.license-btn {
+  width: 100%; padding: 12px; background: var(--primary); color: white;
+  border: 1px solid var(--primary); border-radius: var(--radius-pill); font-weight: 600; font-size: 14px;
+  cursor: pointer; font-family: inherit; transition: background .15s, transform .1s;
+  height: 42px;
+}
+.license-btn:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+.license-btn:active { transform: scale(0.98); }
+.license-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.license-err { color: var(--danger-text); font-size: 12px; min-height: 16px; margin-top: 10px; line-height: 1.5; }
+.license-theme-toggle {
+  position: fixed; top: 20px; right: 20px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-control); padding: 8px;
+  cursor: pointer; color: var(--text-2);
+  box-shadow: var(--shadow-card); transition: all .15s var(--ease);
+  z-index: 10;
+  display: flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px;
+}
+.license-theme-toggle:hover { background: var(--hover); border-color: var(--border-strong); }
+.license-theme-toggle svg { width: 18px; height: 18px; }
+.license-footer { margin-top: 24px; font-size: 11px; color: var(--muted); }
+#lic-active { display: none; }
+</style></head><body>
+<button class="license-theme-toggle" id="theme-btn" title="Toggle theme"></button>
+<div class="license-card">
+  <div class="license-logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+  </div>
+  <h1 id="lic-title">License Required</h1>
+  <p class="license-sub" id="lic-sub">This copy of BillBook needs a license to run.</p>
+
+  <div class="license-notice" id="lic-notice">
+    Send the <b>Setup ID</b> below to your BillBook provider. You will receive a
+    license key back — paste it below to activate. Each license works on this
+    computer only.
+  </div>
+
+  <div class="setup-id-label">This computer's Setup ID</div>
+  <div class="setup-id-box">
+    <div class="setup-id-value" id="lic-sid">…</div>
+    <button class="copy-btn" id="lic-copy" type="button">Copy</button>
+  </div>
+
+  <textarea class="license-input" id="lic-key" placeholder="Paste your license key here — the whole key, even if it wraps over several lines" spellcheck="false"></textarea>
+  <button class="license-btn" id="lic-btn" type="button">Activate License</button>
+  <div class="license-err" id="lic-err"></div>
+  <div class="license-footer">BillBook</div>
+</div>
+
+<script>
+// ─── Theme (same pattern as login.html, dark-first) ─────────────────────
+(function() {
+  var t = localStorage.getItem('bb-theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', t);
+  var sun = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+  var moon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  var paint = function() {
+    document.getElementById('theme-btn').innerHTML = t === 'dark' ? sun : moon;
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = t === 'dark' ? '#181715' : '#faf9f5';
+  };
+  paint();
+  document.getElementById('theme-btn').onclick = function() {
+    t = (t === 'dark') ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+    localStorage.setItem('bb-theme', t);
+    paint();
+  };
+})();
+
+// ─── Load state + route ──────────────────────────────────────────────────
+var REASON_NOTICES = {
+  expired: 'Your license has <b>expired</b>. Send the Setup ID below to receive a renewal key.',
+  machine_mismatch: 'This app was activated on a <b>different computer</b>, so it is locked here. Send the Setup ID below to get a license for THIS computer.'
+};
+
+Promise.all([
+  fetch('/api/license/status').then(function(r) { return r.json(); }).catch(function() { return null; }),
+  fetch('/api/setup/state').then(function(r) { return r.json(); }).catch(function() { return null; })
+]).then(function(res) {
+  var lic = res[0], setup = res[1];
+  if (!lic) return; // backend unreachable — stay on the page
+  document.getElementById('lic-sid').textContent = lic.setup_id || '';
+  if (lic.activated) {
+    // Already licensed — back to normal flow.
+    window.location.href = (setup && !setup.initialized) ? '/setup-wizard' : '/login';
+    return;
+  }
+  if (setup && !setup.initialized) {
+    // Fresh install — the wizard's Step 1 collects the license.
+    window.location.href = '/setup-wizard';
+    return;
+  }
+  if (lic.reason && REASON_NOTICES[lic.reason]) {
+    document.getElementById('lic-notice').innerHTML = REASON_NOTICES[lic.reason];
+  }
+}).catch(function() {});
+
+// ─── Copy Setup ID ────────────────────────────────────────────────────────
+document.getElementById('lic-copy').onclick = function() {
+  var sid = document.getElementById('lic-sid').textContent.trim();
+  var btn = this;
+  var done = function() {
+    btn.textContent = 'Copied ✓'; btn.classList.add('copied');
+    setTimeout(function() { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 1600);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(sid).then(done, function() { done(); });
+  } else {
+    var ta = document.createElement('textarea');
+    ta.value = sid; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta); done();
+  }
+};
+
+// ─── Activate ─────────────────────────────────────────────────────────────
+document.getElementById('lic-btn').onclick = function() {
+  var btn = this;
+  var key = document.getElementById('lic-key').value.trim();
+  var err = document.getElementById('lic-err');
+  err.textContent = '';
+  if (!key) { err.textContent = 'Paste the license key you received first.'; return; }
+  btn.textContent = 'Activating...'; btn.disabled = true;
+  fetch('/api/license/activate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ license_key: key })
+  }).then(function(r) {
+    return r.json().then(function(d) { return { ok: r.ok, data: d }; });
+  }).then(function(res) {
+    if (res.ok) {
+      btn.textContent = 'Activated ✓';
+      // Fresh installs continue in the setup wizard; existing installs log in.
+      fetch('/api/setup/state').then(function(r) { return r.json(); }).then(function(s) {
+        window.location.href = (s && !s.initialized) ? '/setup-wizard' : '/login';
+      }).catch(function() { window.location.href = '/login'; });
+    } else {
+      err.textContent = res.data.error || 'Activation failed — check the key and try again.';
+      btn.textContent = 'Activate License'; btn.disabled = false;
+    }
+  }).catch(function() {
+    err.textContent = 'Network error — is the app still running?';
+    btn.textContent = 'Activate License'; btn.disabled = false;
+  });
+};
+</script></body></html>

@@ -317,18 +317,22 @@ def test_existing_setup_endpoint_still_works():
 
 
 def test_setup_wizard_html_exists():
-    """The setup-wizard.html file exists and contains the 5 steps.
+    """The setup-wizard.html file exists and contains the 6 steps.
 
     v8.14.2: step 4 was renamed from "Optional AI + Finish" to "Optional AI"
-    (the Finish button moved to step 5 — Optional Integrations)."""
+    (the Finish button moved to step 5 — Optional Integrations).
+    v8.19: a License step was added as Step 1 (one setup = one license);
+    everything else shifted down by one and the subtitle went 5 → 6."""
     html = (PROJECT_ROOT / "app" / "static" / "setup-wizard.html").read_text()
     assert "Welcome to BillBook" in html
+    assert "Step 1 — License" in html       # v8.19: license gate step
+    assert "/api/license/activate" in html  # v8.19: wizard activates the license
     assert "Set Your Password" in html
     assert "Business Type" in html
     assert "Confirm Categories" in html
-    assert "Optional AI" in html          # step 4 (was "Optional AI + Finish")
-    assert "Optional Integrations" in html  # v8.14.2: step 5 added
-    assert "5 quick steps" in html          # subtitle bumped 4 → 5
+    assert "Optional AI" in html          # step 5 (was "Optional AI + Finish")
+    assert "Optional Integrations" in html  # v8.14.2: step 6 (was step 5)
+    assert "6 quick steps" in html          # subtitle bumped 5 → 6
     # v8.18.4: GDrive opt-in card removed with the feature — must NOT reappear
     assert "Google Drive auto-backup" not in html
     assert "FBR auto-post" in html               # v8.14.2: FBR opt-in card

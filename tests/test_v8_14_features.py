@@ -639,10 +639,11 @@ def test_scheduler_source_has_no_gdrive_refs():
 
 
 def test_wizard_html_has_step5_integration_cards():
-    """setup-wizard.html must contain the 5th step with the FBR + digest
-    opt-in cards — and (v8.18.4) NO Google Drive card or OAuth popup."""
+    """setup-wizard.html must contain the integrations step (v8.19: now
+    Step 6) with the FBR + digest opt-in cards — and (v8.18.4) NO Google
+    Drive card or OAuth popup."""
     html = (PROJ / "app" / "static" / "setup-wizard.html").read_text(encoding="utf-8")
-    assert "Step 5 — Optional Integrations" in html
+    assert "Step 6 — Optional Integrations" in html
     assert "FBR auto-post" in html                    # FBR card
     assert "Daily WhatsApp digest" in html            # digest card
     assert "w-digest-hour" in html                    # digest hour <select> id

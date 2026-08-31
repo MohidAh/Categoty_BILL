@@ -294,3 +294,29 @@ def shared_setup_test_db_with_password(prefix: str = "billbook_apitest_") -> str
         c.execute("INSERT INTO settings(key, value) VALUES(?,?)",
                   ("password_hash", hash_password("testpass")))
     return test_dir
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# v8.19: Licensing — one setup = one license.
+#
+# The license middleware (app/main.py require_license) gates EVERY request
+# until a machine-bound license is active. The legacy suite (72 files) and
+# the fixtures above assume an open app, so by default every test runs with
+# licensing.is_activated() pinned to True. The REAL enforcement path is
+# exercised in tests/test_licensing.py, which restores the real gate from
+# here (there is NO bypass in production code — this is an in-process test
+# patch only).
+# ═══════════════════════════════════════════════════════════════════════════════
+from app import licensing as _licensing_module
+
+_REAL_IS_ACTIVATED = _licensing_module.is_activated
+
+
+@pytest.fixture(autouse=True)
+def _license_open_for_legacy_tests(monkeypatch):
+    """Default: the app behaves as licensed for all tests.
+
+    tests/test_licensing.py restores the real gate with:
+        monkeypatch.setattr(licensing, "is_activated", conftest._REAL_IS_ACTIVATED)
+    """
+    monkeypatch.setattr(_licensing_module, "is_activated", lambda: True)

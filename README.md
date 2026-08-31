@@ -2,6 +2,45 @@
 
 A self-hosted POS + business management app for Pakistani wholesale discount shops. Upload photos/PDFs of supplier bills for AI extraction, run a full POS with category buttons, track inventory, customers, and loyalty, and get AI-powered business insights. **v8.16.10 clarifies the two margin columns with visual indicators: ↻ (changes with date range) vs = (stays the same).**
 
+## What's New — "License Protection: One Setup = One License"
+
+### Background
+
+The installer (setup) can leak — shared on USB sticks, WhatsApp groups, or copied folders. This release adds a licensing gate: **every install needs a license, every license works on exactly one machine, one time.**
+
+### How it works
+
+- Each install derives a stable **Setup ID** (`XXXX-XXXX-XXXX-XXXX`) from the machine it runs on (Windows `MachineGuid` / macOS `IOPlatformUUID` / Linux `machine-id`). Same PC after reinstall → same Setup ID; any other PC → different Setup ID.
+- The owner issues a license key per Setup ID with `scripts/generate_license.py` and a private Ed25519 key. **The app embeds only the public key** — a leaked setup cannot mint licenses.
+- A license only verifies on the Setup ID it was issued for. Copying the app *or an activated data folder* to another PC stays locked (the stored license is re-verified against the live machine fingerprint on every request).
+- Licenses can be **perpetual or time-limited** (`--days N` = subscription model). Expiry locks the app live, without a restart.
+- Until a license is active: every page redirects to the `/license` lock screen and every API call returns `403 license_required`. Only the license screen, setup wizard, login page and health probes stay reachable. Setup (wizard Step 1) cannot complete without activation.
+- Existing installs that upgrade will lock until activated — send each customer their license (their Setup ID shows on their lock screen).
+
+### Issuing licenses (owner)
+
+```bash
+# one-time: create your signing keypair (already done for this build —
+# only redo it to invalidate ALL previously issued licenses)
+python scripts/generate_license.py --init
+
+# perpetual license for a customer
+python scripts/generate_license.py --setup-id A1B2-C3D4-E5F6-7788 --name "Azhar Store"
+
+# 90-day (subscription) license
+python scripts/generate_license.py --setup-id A1B2-C3D4-E5F6-7788 --name "Azhar Store" --days 90
+```
+
+Every issued license is appended to `licenses_issued.csv` next to the private key (your ledger of who has what). **Keep the private key file secret and backed up** — whoever holds it can mint licenses; if you lose it, no new licenses can be issued.
+
+### Verification
+
+- **25/25 licensing tests** (sign/verify round-trip, tamper/forgery/wrong-machine/expiry rejection, paste normalization, copied-DB lockout, live expiry, middleware enforcement, setup gating, owner tool end-to-end).
+- **Full suite: failure set byte-identical to the pre-change baseline** (71 pre-existing environment/test-debt failures, zero regressions).
+- **Browser E2E with the real production keypair: 24/24 checks** — locked fresh install → wizard Step 1 → wrong-machine license rejected → correct license activates → setup completes → app usable; license revoked live on an existing install → lock screen with machine-mismatch notice → re-activation → login. VLM-verified screenshots.
+
+---
+
 ## What's New in v8.16.10 — "Margin Column Visual Indicators"
 
 ### Background

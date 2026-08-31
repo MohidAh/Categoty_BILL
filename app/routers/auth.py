@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from typing import Any, Optional
 
 from .. import db
+from .. import licensing
 from .. import shop as shop_mod
 from .. import insights
 from .. import trends as trends_mod
@@ -400,6 +401,14 @@ def setup(payload: SetupIn, request: Request = None) -> Any:
     # v8.14.2: `request` optional so tests can call directly without a
     # Starlette Request — session is created either way, cookie only if
     # a real request is present.
+    # v8.19: one setup = one license — the app cannot be initialized
+    # before a license bound to this machine's Setup ID is active.
+    if not licensing.is_activated():
+        return JSONResponse(
+            {"error": "license required — activate a license first",
+             "code": "license_required"},
+            status_code=403,
+        )
     if db.get_setting("password_hash", ""):
         return JSONResponse({"error": "already initialized"}, status_code=400)
     if len(payload.password) < 8:
@@ -486,6 +495,15 @@ def setup_wizard(payload: WizardIn, request: Request = None) -> Any:
     without constructing a Starlette Request — when absent, the session is
     still created but no auth cookie is set on the response.
     """
+    # v8.19: one setup = one license — refuse to run the wizard before a
+    # license bound to this machine's Setup ID is active.
+    if not licensing.is_activated():
+        return JSONResponse(
+            {"error": "license required — activate a license first "
+                      "(Step 1 of this wizard)",
+             "code": "license_required"},
+            status_code=403,
+        )
     if db.get_setting("setup_completed", "") == "true":
         raise HTTPException(400, "setup already completed")
     if db.get_setting("password_hash", ""):

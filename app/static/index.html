@@ -57,17 +57,25 @@
   try { localStorage.setItem('bb-theme', c.theme); } catch (e) {}
 
   // accent + radius CSS custom properties (must match utils.js applyAppearance)
+  // v8.20: theme-aware directions (dark lightens hover/text — must match
+  // applyAppearance so the first paint in dark mode isn't dim).
   function rgb(h) { var n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
   function shade(h, p) { var a = rgb(h).map(function(x){ return Math.max(0, Math.min(255, Math.round(p < 0 ? x * (1 + p) : x + (255 - x) * p))); }); return '#' + a.map(function(x){ return x.toString(16).padStart(2,'0'); }).join(''); }
   function alpha(h, al) { var a = rgb(h); return 'rgba(' + a[0] + ',' + a[1] + ',' + a[2] + ',' + al + ')'; }
-  var hx = c.accent_color, s = root.style;
+  var dk = c.theme === 'dark';
+  var hx = c.accent_color;
+  var HOVER = shade(hx, dk ? 0.16 : -0.14);
+  var ACTIVE = shade(hx, dk ? -0.10 : -0.14);
+  var TEXT = shade(hx, dk ? 0.30 : -0.22);
+  var SOFT = alpha(hx, dk ? 0.14 : 0.12);
+  var s = root.style;
   var vars = {
-    '--coral': hx, '--coral-active': shade(hx, -0.14), '--coral-text': shade(hx, -0.22),
-    '--coral-soft': alpha(hx, 0.12), '--coral-disabled': alpha(hx, 0.35),
-    '--accent': hx, '--accent-hover': shade(hx, -0.14), '--accent-soft': alpha(hx, 0.12),
-    '--accent-text': shade(hx, -0.22), '--accent-border': alpha(hx, 0.25),
-    '--primary': hx, '--primary-hover': shade(hx, -0.14), '--primary-soft': alpha(hx, 0.12),
-    '--primary-text': shade(hx, -0.22), '--primary-border': alpha(hx, 0.25),
+    '--coral': hx, '--coral-active': ACTIVE, '--coral-text': TEXT,
+    '--coral-soft': SOFT, '--coral-disabled': alpha(hx, 0.35),
+    '--accent': hx, '--accent-hover': HOVER, '--accent-soft': SOFT,
+    '--accent-text': TEXT, '--accent-border': alpha(hx, 0.25),
+    '--primary': hx, '--primary-hover': HOVER, '--primary-soft': SOFT,
+    '--primary-text': TEXT, '--primary-border': alpha(hx, 0.25),
     '--radius-xs': r[0], '--radius-sm': r[1], '--radius': r[2], '--radius-md': r[2],
     '--radius-lg': r[3], '--radius-xl': r[4], '--radius-control': r[1], '--radius-card': r[2], '--radius-modal': r[3]
   };
@@ -102,13 +110,12 @@
 </head>
 <body>
 <div id="app">
-  <div id="boot-splash" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#faf9f5;color:#3d3d3a;z-index:99999">
+  <div id="boot-splash" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--canvas,#faf9f5);color:var(--body,#3d3d3a);z-index:99999">
     <div style="font-family:Georgia,'Times New Roman',serif;font-size:34px;font-weight:600;letter-spacing:-0.5px">BillBook</div>
-    <div style="margin-top:18px;width:26px;height:26px;border:3px solid #cc785c;border-top-color:transparent;border-radius:50%;animation:_bbbootspin 0.8s linear infinite"></div>
-    <div style="margin-top:14px;font-size:13px;color:#8e8b82;font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif">Loading…</div>
+    <div style="margin-top:18px;width:26px;height:26px;border:3px solid var(--coral,#cc785c);border-top-color:transparent;border-radius:50%;animation:_bbbootspin 0.8s linear infinite"></div>
+    <div style="margin-top:14px;font-size:13px;color:var(--muted-soft,#8e8b82);font-family:-apple-system,'Segoe UI',Roboto,Arial,sans-serif">Loading…</div>
   </div>
   <style>@keyframes _bbbootspin{to{transform:rotate(360deg)}}</style>
-  <script>try{if(document.documentElement.getAttribute('data-theme')==='dark'){var _bs=document.getElementById('boot-splash');_bs.style.background='#181715';_bs.style.color='#d4cfc4';}}catch(e){}</script>
 </div>
 <div id="toast-container" aria-live="polite" aria-atomic="true"></div>
 <div id="loading-overlay" class="loading-overlay" hidden>

@@ -491,8 +491,11 @@ select option {
   color-scheme: light;
 }
 [data-theme="light"] select option {
-  background-color: #fff;
-  color: #08090A;
+  /* v8.20: scheme-aware (was hardcoded #fff — non-warm light schemes
+     kept pure-white dropdown options). warm light resolves to #FFFFFF,
+     so the default look is unchanged. */
+  background-color: var(--surface);
+  color: var(--text);
 }
 
 label {

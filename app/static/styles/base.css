@@ -7,6 +7,10 @@
 
 :root {
   /* ── Brand & Accent ────────────────────────────────────────────── */
+  /* v8.20: native widgets (scrollbars, select dropdowns, date pickers)
+     follow the active theme — without this, dark mode kept light chrome. */
+  color-scheme: light;
+
   --coral: #cc785c;
   --coral-active: #a9583e;
   --coral-disabled: #e6dfd8;
@@ -147,6 +151,9 @@
 
 /* ── Dark theme variant (POS + settings dark mode) ──────────────── */
 [data-theme="dark"] {
+  /* v8.20: dark native widgets — scrollbars, dropdown lists, inputs */
+  color-scheme: dark;
+
   --canvas: #181715;
   --surface-soft: #1f1e1b;
   --surface-card: #252320;

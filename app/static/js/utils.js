@@ -323,27 +323,87 @@ function _composite(rgbaStr, baseHex) {
   return '#' + out.map((c) => c.toString(16).padStart(2, '0')).join('');
 }
 
+// v8.20: WCAG relative luminance + contrast ratio. Used to keep derived
+// accent TEXT tokens readable in both themes (a darkened accent on a dark
+// canvas, or a pale accent on a light canvas, can fall under AA).
+function _relLum(hex) {
+  const rgb = _hexToRgb(hex); if (!rgb) return 0;
+  const f = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+  return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]);
+}
+function _contrastRatio(a, b) {
+  const la = _relLum(a), lb = _relLum(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+// Nudge fg toward white (on dark bg) or near-black (on light bg) until it
+// clears `target` contrast. Presets all pass already, so this only rescues
+// extreme accents (custom near-white / near-black seeds). Target 3.0 = the
+// WCAG large-text/UI floor, chosen so the brand coral light text (≈3.8:1,
+// shipping since v8.5) stays byte-identical.
+function _ensureAA(fgHex, bgHex, target = 3.0) {
+  if (!bgHex || !_hexToRgb(bgHex)) return fgHex;
+  if (_contrastRatio(fgHex, bgHex) >= target) return fgHex;
+  const toward = _relLum(bgHex) < 0.4 ? '#FFFFFF' : '#0F1011';
+  let best = fgHex;
+  for (let t = 0.1; t <= 1.001; t += 0.1) {
+    best = _mix(fgHex, toward, t);
+    if (_contrastRatio(best, bgHex) >= target) return best;
+  }
+  return best;
+}
+
 // v8.19: derive the legacy base.css primitives from a modern token set.
 // Used by every scheme that does not ship exact legacy values (i.e. every
 // scheme except 'warm') and by the custom scheme.
-function _legacyFromTokens(toks, darkToks) {
-  const body = _mix(toks.text, toks.bg, 0.18);
+// v8.20 DARK-MODE FIX: the derivation is now ACTIVE-THEME aware. The old
+// signature always mapped the LIGHT token set onto --canvas/--ink/
+// --surface-card/…, so in dark mode every non-warm scheme painted the
+// legacy vocabulary (login screen, license screen, ~60 older components)
+// in LIGHT colors while the modern components went dark — the app was
+// split-brained in dark mode. Now `active` is the token set for the CURRENT
+// theme and the mapping flips with it:
+//   light theme — legacy cream surfaces come from the light tokens and the
+//   --surface-dark* wells from the dark ones (dark panels on a light page).
+//   dark theme — the whole page IS the dark surface: --canvas/--ink/… come
+//   from the dark tokens and the wells step one shade DEEPER than canvas,
+//   mirroring the relationships in base.css's [data-theme=dark] block.
+function _legacyFromTokens(active, other, isDark) {
+  if (isDark) {
+    return {
+      canvas: active.bg,
+      surfaceSoft: active.surface,
+      surfaceCard: active.elevated,
+      creamStrong: _mix(active.bg, active.text, 0.10),
+      surfaceDark: _shade(active.bg, -0.35),
+      surfaceDarkElevated: active.elevated,
+      surfaceDarkSoft: active.surface,
+      hairline: _composite(active.border, active.bg),
+      hairlineSoft: _composite(active.borderSubtle, active.bg),
+      ink: active.text,
+      bodyStrong: active.text,
+      body: active.text2,
+      mutedSoft: active.muted,
+      onDark: active.text,
+      onDarkSoft: active.text2,
+    };
+  }
+  const body = _mix(active.text, active.bg, 0.18);
   return {
-    canvas: toks.bg,
-    surfaceSoft: _mix(toks.bg, toks.elevated, 0.5),
-    surfaceCard: toks.elevated,
-    creamStrong: _mix(toks.bg, toks.text, 0.06),
-    surfaceDark: darkToks.bg,
-    surfaceDarkElevated: darkToks.elevated,
-    surfaceDarkSoft: darkToks.surface,
-    hairline: _composite(toks.border, toks.bg),
-    hairlineSoft: _composite(toks.borderSubtle, toks.bg),
-    ink: toks.text,
-    bodyStrong: toks.text,
+    canvas: active.bg,
+    surfaceSoft: _mix(active.bg, active.elevated, 0.5),
+    surfaceCard: active.elevated,
+    creamStrong: _mix(active.bg, active.text, 0.06),
+    surfaceDark: other.bg,
+    surfaceDarkElevated: other.elevated,
+    surfaceDarkSoft: other.surface,
+    hairline: _composite(active.border, active.bg),
+    hairlineSoft: _composite(active.borderSubtle, active.bg),
+    ink: active.text,
+    bodyStrong: active.text,
     body,
-    mutedSoft: toks.muted,
-    onDark: darkToks.text,
-    onDarkSoft: darkToks.text2,
+    mutedSoft: active.muted,
+    onDark: other.text,
+    onDarkSoft: other.text2,
   };
 }
 
@@ -446,7 +506,12 @@ export function applyAppearance(cfg) {
   // older components consume these — before this block they stayed cream/coral
   // under every scheme. 'warm' ships exact base.css values (zero visual change
   // for default installs); other schemes derive them from the token set.
-  const legacySource = (scheme.legacy && scheme.legacy[c.theme]) || _legacyFromTokens(scheme.light, scheme.dark);
+  // v8.20: the derivation now uses the ACTIVE theme's tokens (see
+  // _legacyFromTokens) so dark mode flips the legacy vocabulary too — this is
+  // the "dark mode compatible" fix: previously non-warm schemes kept the
+  // login/license/legacy components LIGHT in dark mode.
+  const legacySource = (scheme.legacy && scheme.legacy[c.theme])
+    || _legacyFromTokens(toks, c.theme === 'dark' ? scheme.light : scheme.dark, c.theme === 'dark');
   const legacyVars = {
     '--canvas': legacySource.canvas,
     '--surface-soft': legacySource.surfaceSoft,
@@ -476,23 +541,42 @@ export function applyAppearance(cfg) {
   root.style.zoom = zoom;
 
   // Accent: derive the full token family from one hex (design.md color roles)
+  // v8.20 DARK-MODE FIX: the derivation is now theme-aware. In LIGHT mode
+  // hover/active darken and text deepens (contrast on bright surfaces);
+  // in DARK mode hover LIGHTENS (darkening on a dark canvas is invisible)
+  // and text lightens so links/labels stay readable — previously every
+  // --*-text/--*--hover token was darkened in BOTH themes, which made
+  // accent text muddy and low-contrast in dark mode. Text tokens then go
+  // through an AA guard (3:1) that only rescues extreme accents, keeping
+  // every preset's light-mode values byte-identical.
+  const dark = c.theme === 'dark';
   const hex = c.accent_color;
+  const hoverShade = _shade(hex, dark ? 0.16 : -0.14);
+  const activeShade = _shade(hex, dark ? -0.10 : -0.14);
+  const accentText = _ensureAA(_shade(hex, dark ? 0.30 : -0.22), toks.bg);
+  const softAlpha = _alpha(hex, dark ? 0.14 : 0.12);
+  // Text on accent-filled surfaces (buttons/chips): white by default, flips
+  // to near-black when the accent itself is light — custom schemes with pale
+  // seeds would otherwise render white-on-near-white in both themes.
+  const onAccent = _relLum(hex) > 0.55 ? '#0F1011' : '#FFFFFF';
   const vars = {
     '--coral': hex,
-    '--coral-active': _shade(hex, -0.14),
-    '--coral-text': _shade(hex, -0.22),
-    '--coral-soft': _alpha(hex, 0.12),
+    '--coral-active': activeShade,
+    '--coral-text': accentText,
+    '--coral-soft': softAlpha,
     '--coral-disabled': _alpha(hex, 0.35),
     '--accent': hex,
-    '--accent-hover': _shade(hex, -0.14),
-    '--accent-soft': _alpha(hex, 0.12),
-    '--accent-text': _shade(hex, -0.22),
+    '--accent-hover': hoverShade,
+    '--accent-soft': softAlpha,
+    '--accent-text': accentText,
     '--accent-border': _alpha(hex, 0.25),
     '--primary': hex,
-    '--primary-hover': _shade(hex, -0.14),
-    '--primary-soft': _alpha(hex, 0.12),
-    '--primary-text': _shade(hex, -0.22),
+    '--primary-hover': hoverShade,
+    '--primary-soft': softAlpha,
+    '--primary-text': accentText,
     '--primary-border': _alpha(hex, 0.25),
+    '--on-primary': onAccent,
+    '--text-on-accent': onAccent,
   };
   for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
 

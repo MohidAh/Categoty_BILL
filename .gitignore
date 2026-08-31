@@ -10,6 +10,7 @@ __pycache__/
 *.key
 *.pem
 *.crt
+licenses_issued.csv
 
 # Database + runtime data (NEVER commit — contains real customer PII)
 # v8.14.2: blanket-ignore the whole data/ dir. The old granular list

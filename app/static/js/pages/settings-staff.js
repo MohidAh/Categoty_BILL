@@ -3,7 +3,8 @@
 import { route, navigate, reload } from '../router.js';
 import { api, apiPost, apiPut, apiDelete } from '../api.js';
 import { $, $$, esc, fmt, fmtDate, toast, showLoading, hideLoading,
-         openModal, closeModal, skeletonCards, errorBox, emptyState, icon, iconHtml } from '../utils.js';
+         openModal, closeModal, skeletonCards, errorBox, emptyState, icon, iconHtml,
+         btnBusy, btnOk } from '../utils.js';
 
 const SVG = {
   users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
@@ -229,15 +230,25 @@ route('/settings/security', async (el) => {
     const oldPw = $('#pw-old').value;
     const newPw = $('#pw-new').value;
     const conf = $('#pw-conf').value;
+    const saveBtn = $('#pw-save-btn');
+
     if (newPw !== conf) { toast('Passwords do not match', 'error'); return; }
     if (newPw.length < 8) { toast('Min 8 characters', 'error'); return; }
+    if (!btnBusy(saveBtn, 'Changing…')) return;
+    showLoading('Changing password…');
+
     try {
       await apiPost('/api/change-password', { old_password: oldPw, new_password: newPw });
       toast('Password changed', 'success');
       $('#pw-old').value = '';
       $('#pw-new').value = '';
       $('#pw-conf').value = '';
-    } catch (e) { toast('Error: ' + e.message, 'error'); }
+    } catch (e) {
+      toast('Error: ' + e.message, 'error');
+    } finally {
+      btnOk(saveBtn);
+      hideLoading();
+    }
   };
 
   await loadSessions();

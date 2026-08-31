@@ -88,6 +88,12 @@ def create_backup() -> Any:
             method = "file_copy_with_wal"
         except Exception as e:
             raise HTTPException(500, f"All backup methods failed: {e}")
+    # v8.19: backups must NEVER carry the license (a license bound to one
+    # machine's Setup ID is useless — and actively harmful — on any other
+    # machine: restoring it there would lock a legitimately-licensed app).
+    # Scrub license_* rows from the snapshot so backups are pure data.
+    from .. import licensing as _licensing
+    scrubbed = _licensing.scrub_license_from_db_file(backup_path)
     # Prune: keep only the last MAX_BACKUPS
     backups = sorted(BACKUPS.glob("billbook_*.db"))
     if len(backups) > MAX_BACKUPS:
@@ -96,9 +102,10 @@ def create_backup() -> Any:
     db.set_setting("last_backup_at", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     db.log_activity("backup_created", "backup", None,
                     f"Backup created: {backup_path.name} (method={method})",
-                    {"path": str(backup_path), "method": method})
+                    {"path": str(backup_path), "method": method,
+                     "license_rows_scrubbed": scrubbed})
     return {"ok": True, "backup": backup_path.name, "path": str(backup_path),
-            "method": method,
+            "method": method, "license_rows_scrubbed": scrubbed,
             "total_backups": len(list(BACKUPS.glob("billbook_*.db")))}
 
 
@@ -293,6 +300,18 @@ def restore_backup(payload: RestoreBackupIn) -> Any:
       4. Uses sqlite3_backup API to overwrite the live DB
       5. Forces a clean restart of the app (caller should restart after)
 
+    v8.19: the license NEVER travels with a restore. THIS machine's
+    license_* settings are snapshotted before the overwrite and re-applied
+    after it, so:
+      - restoring on the licensed machine keeps it licensed (no
+        re-activation), and
+      - restoring a backup made on ANOTHER machine (e.g. migrating data to
+        a new, separately-licensed PC) keeps THIS machine's own license —
+        the foreign license in the backup never replaces it.
+    An unlicensed machine gains nothing from a restore: backups made by
+    this version carry no license rows, and a legacy backup's foreign
+    license still fails the machine fingerprint check.
+
     IMPORTANT: this endpoint does NOT serve requests while restoring —
     the live DB is locked. The client must:
       - call this endpoint
@@ -332,6 +351,9 @@ def restore_backup(payload: RestoreBackupIn) -> Any:
             src.close()
     except Exception as e:
         logger.warning("Pre-restore snapshot failed: %s (continuing anyway)", e)
+    # Snapshot THIS machine's license so the restore can't wipe or replace it
+    from .. import licensing as _licensing
+    saved_license = _licensing.local_license_settings()
     # Restore: overwrite the live DB from the backup
     try:
         import sqlite3
@@ -344,13 +366,19 @@ def restore_backup(payload: RestoreBackupIn) -> Any:
             src.close()
     except Exception as e:
         raise HTTPException(500, f"Restore failed: {e}. Pre-restore snapshot at {pre_restore_path}")
+    # Re-apply this machine's own license over whatever the backup carried
+    # (no-op for unlicensed machines — a scrubbed backup carries no license
+    # anyway; a legacy backup's foreign license then locks as machine_mismatch).
+    reapplied = _licensing.reapply_license_settings(saved_license)
     db.log_activity("backup_restored", "backup", None,
                     f"Restored from {name} by {mgr['name']}. Pre-restore snapshot: {pre_restore_path.name}",
-                    {"backup_name": name, "prerestore": str(pre_restore_path)})
+                    {"backup_name": name, "prerestore": str(pre_restore_path),
+                     "license_settings_reapplied": reapplied})
     return {
         "ok": True,
         "restored_from": name,
         "pre_restore_snapshot": str(pre_restore_path),
+        "license_preserved": bool(saved_license),
         "note": "Restart the app now — current in-memory state is stale.",
     }
 

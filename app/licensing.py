@@ -345,3 +345,105 @@ def activate(raw_key: str) -> tuple[bool, dict, str]:
     logger.info("License #%s activated (expires %s)",
                 payload.get("no"), payload.get("exp") or "never")
     return True, payload, ""
+
+
+# ─── License vs. backups (v8.19: "license never travels in backups") ────────
+#
+# Backups are raw SQLite snapshots of the whole DB, and the license lives in
+# the settings table — so without these helpers a backup would carry the
+# license key to whatever machine restores it. That is both a leak vector and
+# a support trap: restoring PC-A's backup on licensed PC-B would WIPE PC-B's
+# own license and replace it with PC-A's (machine_mismatch -> locked app).
+#
+# Policy implemented here:
+#   * create_backup() SCRUBS license_* rows from the backup file ->
+#     backups are pure data, safe to move between machines.
+#   * restore_backup() re-applies THIS machine's license rows after the
+#     overwrite -> a licensed machine that restores any backup (foreign or
+#     made by an older app version) keeps its own license and stays unlocked.
+#     An unlicensed machine gains nothing: a scrubbed backup carries no
+#     license, and a legacy backup's foreign license fails the fingerprint
+#     check exactly as before.
+
+_LICENSE_SETTING_LIKE = "license_%"
+
+
+def local_license_settings() -> dict:
+    """All license_* settings rows of THIS install, as {key: value}.
+
+    Snapshotted before a DB restore so the machine's own license survives
+    the restore (see restore_backup in routers/maintenance.py).
+    """
+    try:
+        with db.conn() as c:
+            rows = c.execute(
+                "SELECT key, value FROM settings WHERE key LIKE ?",
+                (_LICENSE_SETTING_LIKE,),
+            ).fetchall()
+        return {r["key"]: r["value"] for r in rows}
+    except Exception:
+        logger.exception("local_license_settings() failed — returning {}")
+        return {}
+
+
+def reapply_license_settings(rows: dict) -> int:
+    """Re-write saved license_* rows into the live DB (post-restore).
+
+    Returns the number of rows re-applied. Must never raise into the
+    restore flow — a failure is logged and swallowed (worst case the
+    operator re-activates with their key).
+    """
+    applied = 0
+    try:
+        for k, v in (rows or {}).items():
+            if not str(k).startswith("license_"):
+                continue  # defensive: only license rows belong here
+            db.set_setting(str(k), str(v))
+            applied += 1
+        _reset_cache()
+        if applied:
+            logger.info("Re-applied %d license setting(s) after DB restore", applied)
+    except Exception:
+        logger.exception("reapply_license_settings() failed — "
+                         "operator may need to re-activate their license")
+    return applied
+
+
+def scrub_license_from_db_file(path) -> int:
+    """Delete license_* rows from a STANDALONE DB file (a backup snapshot).
+
+    Opens the file directly (not via db.conn — it may live outside the data
+    dir), removes the license rows, commits, and drops any -wal/-shm
+    sidecars so the scrubbed main file is authoritative. Returns the number
+    of rows removed. A file without a settings table (or without license
+    rows) is left untouched and returns 0.
+    """
+    import sqlite3 as _sqlite3
+    p = Path(path)
+    try:
+        con = _sqlite3.connect(str(p))
+        try:
+            has_settings = con.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='settings'"
+            ).fetchone()
+            if not has_settings:
+                return 0
+            cur = con.execute(
+                "DELETE FROM settings WHERE key LIKE ?", (_LICENSE_SETTING_LIKE,))
+            removed = cur.rowcount or 0
+            con.commit()
+        finally:
+            con.close()
+        # File-copy backups may carry WAL/SHM sidecars; after our commit+close
+        # the main file holds everything, so drop the sidecars if they remain.
+        for suffix in ("-wal", "-shm"):
+            try:
+                Path(str(p) + suffix).unlink(missing_ok=True)
+            except Exception:
+                pass
+        if removed:
+            logger.info("Scrubbed %d license row(s) from backup %s", removed, p.name)
+        return removed
+    except Exception:
+        logger.exception("scrub_license_from_db_file(%s) failed", p)
+        return 0

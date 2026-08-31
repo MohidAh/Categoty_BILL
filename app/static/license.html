@@ -9,6 +9,9 @@
 <link rel="stylesheet" href="/static/styles/base.css">
     <link rel="stylesheet" href="/static/styles/components.css">
     <link rel="stylesheet" href="/static/styles/layout.css">
+<!-- v8.19: apply the saved color scheme (not just light/dark) to the license
+     lock screen — previously this page ignored the appearance color scheme. -->
+<script type="module" src="/static/js/scheme-boot.js"></script>
 <style>
 /* v8.19: License lock screen — same Linear design system as login (dark-first) */
 * { box-sizing: border-box; }
@@ -130,14 +133,17 @@ h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; letter-spacing: -0.02em
   var moon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
   var paint = function() {
     document.getElementById('theme-btn').innerHTML = t === 'dark' ? sun : moon;
-    var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = t === 'dark' ? '#181715' : '#faf9f5';
+    // v8.19: scheme-boot.js owns the theme-color meta (follows the scheme's
+    // canvas, not a hardcoded cream).
   };
   paint();
   document.getElementById('theme-btn').onclick = function() {
     t = (t === 'dark') ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', t);
     localStorage.setItem('bb-theme', t);
+    // v8.19: re-apply the full scheme (flipping data-theme alone leaves
+    // stale scheme tokens once a color scheme is active).
+    if (window.bbApplyTheme) { window.bbApplyTheme(t); }
+    else { document.documentElement.setAttribute('data-theme', t); }
     paint();
   };
 })();

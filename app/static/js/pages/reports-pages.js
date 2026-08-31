@@ -164,7 +164,7 @@ route('/reports/overview', async (el, path, q) => {
     if (m.series.length) {
       new Chart($('#trend-chart'), {
         type: 'line',
-        data: { labels: m.series.map(s => s.date), datasets: [{ label: 'Daily Spend', data: m.series.map(s => s.spend), borderColor: '#cc785c', backgroundColor: 'rgba(204,120,92,0.12)', fill: true, tension: .3, borderWidth: 2 }] },
+        data: { labels: m.series.map(s => s.date), datasets: [{ label: 'Daily Spend', data: m.series.map(s => s.spend), borderColor: chartTheme().primary, backgroundColor: chartTheme().primarySoft, fill: true, tension: .3, borderWidth: 2 }] },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { color: chartTheme().tickColor }, grid: { color: chartTheme().gridColor } }, x: { ticks: { color: chartTheme().tickColor, maxRotation: 45 }, grid: { display: false } } } }
       });
     }

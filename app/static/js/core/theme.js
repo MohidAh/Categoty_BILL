@@ -14,4 +14,6 @@ export {
   APPEARANCE_DEFAULTS,
   APPEARANCE_ACCENT_PRESETS,
   APPEARANCE_SCHEME_PRESETS,
+  deriveCustomScheme,
+  chartTheme,
 } from '../utils.js';

@@ -219,6 +219,7 @@ export const APPEARANCE_DEFAULTS = {
   theme: 'light',            // design.md: cream canvas is the brand default floor
   color_scheme: 'warm',      // v8.18.7: whole-system color scheme (canvas + tones + default accent)
   accent_color: '#cc785c',   // design.md: signature coral primary
+  custom_scheme_base: '#6b7280', // v8.19: seed color when color_scheme === 'custom'
   density: 'comfortable',
   font_scale: '100',
   serif_headings: true,      // design.md: serif display headlines (Cormorant Garamond)
@@ -231,11 +232,27 @@ export const APPEARANCE_DEFAULTS = {
 // (the Brand Accent picker overrides the scheme's suggestion).
 // 'warm' replicates the previous default exactly, so existing installs
 // see zero visual change until they pick a scheme.
+//
+// v8.19: the app ships TWO token vocabularies — the modern design-system
+// vars (--bg/--surface/--border/…, 13 tokens below) and the older
+// cream-era primitives in styles/base.css (--canvas/--surface-card/--ink/
+// --hairline/…). v8.18.7 only set the modern set, so login/license screens
+// and every legacy consumer stayed cream no matter the scheme. Now each
+// preset may carry a `legacy` block mapping its primitives; when absent
+// (ocean/forest/violet/slate/custom) they are DERIVED from the modern
+// tokens. 'warm' carries the exact base.css values so the default install
+// keeps rendering pixel-identically.
 export const APPEARANCE_SCHEME_PRESETS = [
   {
     id: 'warm', name: 'Coral Warm', accent: '#cc785c', desc: 'Creams & coral — the BillBook signature',
     light: { bg: '#FFFFFF', surface: '#FFFFFF', elevated: '#F7F8F8', hover: 'rgba(0,0,0,0.03)', bgInput: 'rgba(0,0,0,0.02)', border: 'rgba(0,0,0,0.08)', borderStrong: 'rgba(0,0,0,0.12)', borderSubtle: 'rgba(0,0,0,0.04)', text: '#08090A', text2: '#62666D', muted: '#8A8F98', textQuat: '#D0D6E0' },
     dark:  { bg: '#08090A', surface: '#0F1011', elevated: '#18191A', hover: 'rgba(255,255,255,0.05)', bgInput: 'rgba(255,255,255,0.02)', border: 'rgba(255,255,255,0.05)', borderStrong: 'rgba(255,255,255,0.08)', borderSubtle: 'rgba(255,255,255,0.04)', text: '#F7F8F8', text2: '#8A8F98', muted: '#62666D', textQuat: '#3E3E44' },
+    legacy: {
+      // EXACT styles/base.css values (light + [data-theme=dark]) — warm must
+      // keep rendering exactly what pre-scheme installs rendered.
+      light: { canvas: '#faf9f5', surfaceSoft: '#f5f0e8', surfaceCard: '#efe9de', creamStrong: '#e8e0d2', surfaceDark: '#181715', surfaceDarkElevated: '#252320', surfaceDarkSoft: '#1f1e1b', hairline: '#e6dfd8', hairlineSoft: '#ebe6df', ink: '#141413', bodyStrong: '#252523', body: '#3d3d3a', mutedSoft: '#7a7770', onDark: '#faf9f5', onDarkSoft: '#a09d96' },
+      dark:  { canvas: '#181715', surfaceSoft: '#1f1e1b', surfaceCard: '#252320', creamStrong: '#2a2825', surfaceDark: '#0f0e0d', surfaceDarkElevated: '#252320', surfaceDarkSoft: '#1f1e1b', hairline: 'rgba(250,249,245,0.08)', hairlineSoft: 'rgba(250,249,245,0.04)', ink: '#faf9f5', bodyStrong: '#e8e0d2', body: '#d4cfc4', mutedSoft: '#6c6a64', onDark: '#faf9f5', onDarkSoft: '#a09d96' },
+    },
   },
   {
     id: 'ocean', name: 'Ocean Blue', accent: '#3E7BB6', desc: 'Cool blues — calm and professional',
@@ -287,11 +304,96 @@ function _alpha(hex, a) {
   const rgb = _hexToRgb(hex); if (!rgb) return hex;
   return `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${a})`;
 }
+function _mix(a, b, t) {
+  // t=0 -> a, t=1 -> b (linear RGB blend, a/b are hex)
+  const ca = _hexToRgb(a), cb = _hexToRgb(b);
+  if (!ca || !cb) return a;
+  const m = ca.map((c, i) => Math.round(c + (cb[i] - c) * t));
+  return '#' + m.map((c) => c.toString(16).padStart(2, '0')).join('');
+}
+function _composite(rgbaStr, baseHex) {
+  // Flatten "rgba(r,g,b,a)" over baseHex -> solid hex. Returns baseHex
+  // unchanged when rgbaStr isn't parseable (some tokens are already solid).
+  const m = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)/.exec(rgbaStr || '');
+  if (!m) return rgbaStr || baseHex;
+  const a = m[4] === undefined ? 1 : Math.max(0, Math.min(1, parseFloat(m[4])));
+  const base = _hexToRgb(baseHex);
+  if (!base) return baseHex;
+  const out = [1, 2, 3].map((i) => Math.round(parseInt(m[i], 10) * a + base[i - 1] * (1 - a)));
+  return '#' + out.map((c) => c.toString(16).padStart(2, '0')).join('');
+}
+
+// v8.19: derive the legacy base.css primitives from a modern token set.
+// Used by every scheme that does not ship exact legacy values (i.e. every
+// scheme except 'warm') and by the custom scheme.
+function _legacyFromTokens(toks, darkToks) {
+  const body = _mix(toks.text, toks.bg, 0.18);
+  return {
+    canvas: toks.bg,
+    surfaceSoft: _mix(toks.bg, toks.elevated, 0.5),
+    surfaceCard: toks.elevated,
+    creamStrong: _mix(toks.bg, toks.text, 0.06),
+    surfaceDark: darkToks.bg,
+    surfaceDarkElevated: darkToks.elevated,
+    surfaceDarkSoft: darkToks.surface,
+    hairline: _composite(toks.border, toks.bg),
+    hairlineSoft: _composite(toks.borderSubtle, toks.bg),
+    ink: toks.text,
+    bodyStrong: toks.text,
+    body,
+    mutedSoft: toks.muted,
+    onDark: darkToks.text,
+    onDarkSoft: darkToks.text2,
+  };
+}
+
+// v8.19: CUSTOM color scheme — the user picks one seed color and the full
+// light+dark token sets (modern + legacy) are derived from it. Suggested
+// accent = the seed itself; the Brand Accent picker can still override.
+export function deriveCustomScheme(base) {
+  const hex = _hexToRgb(base) ? base : APPEARANCE_DEFAULTS.custom_scheme_base;
+  const deep = _shade(hex, -0.45);                  // darkened seed for borders/tints
+  const lightText = _mix('#101114', hex, 0.10);     // near-black carrying the hue
+  const light = {
+    bg: _mix('#FFFFFF', hex, 0.05),                 // canvas: white with a whisper of the seed
+    surface: '#FFFFFF',
+    elevated: _mix('#FFFFFF', hex, 0.12),
+    hover: _alpha(deep, 0.05),
+    bgInput: _alpha(deep, 0.04),
+    border: _alpha(deep, 0.12),
+    borderStrong: _alpha(deep, 0.18),
+    borderSubtle: _alpha(deep, 0.06),
+    text: lightText,
+    text2: _mix(lightText, _mix('#FFFFFF', hex, 0.05), 0.40),
+    muted: _mix(lightText, _mix('#FFFFFF', hex, 0.05), 0.58),
+    textQuat: _mix(lightText, _mix('#FFFFFF', hex, 0.05), 0.86),
+  };
+  const darkText = _mix('#F4F6F8', hex, 0.06);      // near-white carrying the hue
+  const dark = {
+    bg: _shade(hex, -0.86),
+    surface: _shade(hex, -0.80),
+    elevated: _shade(hex, -0.72),
+    hover: _alpha(_shade(hex, 0.30), 0.07),
+    bgInput: _alpha(_shade(hex, 0.30), 0.04),
+    border: _alpha(_shade(hex, 0.35), 0.09),
+    borderStrong: _alpha(_shade(hex, 0.35), 0.13),
+    borderSubtle: _alpha(_shade(hex, 0.35), 0.06),
+    text: darkText,
+    text2: _mix(darkText, _shade(hex, -0.80), 0.45),
+    muted: _mix(darkText, _shade(hex, -0.80), 0.60),
+    textQuat: _mix(darkText, _shade(hex, -0.80), 0.82),
+  };
+  return { light, dark };
+}
 
 export function normalizeAppearance(cfg) {
   const c = { ...APPEARANCE_DEFAULTS, ...(cfg || {}) };
   c.theme = (c.theme === 'dark') ? 'dark' : 'light';
-  if (!APPEARANCE_SCHEME_PRESETS.some(s => s.id === c.color_scheme)) c.color_scheme = 'warm';
+  const validSchemes = APPEARANCE_SCHEME_PRESETS.map(s => s.id).concat(['custom']);
+  if (!validSchemes.includes(c.color_scheme)) c.color_scheme = 'warm';
+  if (c.color_scheme === 'custom' && !/^#[0-9a-fA-F]{6}$/.test(c.custom_scheme_base || '')) {
+    c.custom_scheme_base = APPEARANCE_DEFAULTS.custom_scheme_base;
+  }
   if (!/^#[0-9a-fA-F]{6}$/.test(c.accent_color || '')) c.accent_color = APPEARANCE_DEFAULTS.accent_color;
   c.density = (c.density === 'compact') ? 'compact' : 'comfortable';
   const fs = parseInt(c.font_scale, 10);
@@ -313,7 +415,14 @@ export function applyAppearance(cfg) {
   // for the ACTIVE theme are set as inline root styles, which override both
   // the :root (dark) and [data-theme="light"] blocks in design-system.css —
   // every component that consumes var(--bg/--surface/--text…) restyles.
-  const scheme = APPEARANCE_SCHEME_PRESETS.find(s => s.id === c.color_scheme) || APPEARANCE_SCHEME_PRESETS[0];
+  // v8.19: 'custom' derives both token sets from the user's seed color.
+  let scheme;
+  if (c.color_scheme === 'custom') {
+    const derived = deriveCustomScheme(c.custom_scheme_base);
+    scheme = { id: 'custom', name: 'Custom', accent: c.custom_scheme_base, light: derived.light, dark: derived.dark };
+  } else {
+    scheme = APPEARANCE_SCHEME_PRESETS.find(s => s.id === c.color_scheme) || APPEARANCE_SCHEME_PRESETS[0];
+  }
   const toks = c.theme === 'dark' ? scheme.dark : scheme.light;
   root.setAttribute('data-scheme', scheme.id);
   const canvasVars = {
@@ -331,6 +440,31 @@ export function applyAppearance(cfg) {
     '--text-quaternary': toks.textQuat,
   };
   for (const [k, v] of Object.entries(canvasVars)) root.style.setProperty(k, v);
+
+  // v8.19: ALSO restyle the legacy base.css primitives (--canvas/--surface-card/
+  // --ink/--hairline/…). The login screen, license screen and a large share of
+  // older components consume these — before this block they stayed cream/coral
+  // under every scheme. 'warm' ships exact base.css values (zero visual change
+  // for default installs); other schemes derive them from the token set.
+  const legacySource = (scheme.legacy && scheme.legacy[c.theme]) || _legacyFromTokens(scheme.light, scheme.dark);
+  const legacyVars = {
+    '--canvas': legacySource.canvas,
+    '--surface-soft': legacySource.surfaceSoft,
+    '--surface-card': legacySource.surfaceCard,
+    '--surface-cream-strong': legacySource.creamStrong,
+    '--surface-dark': legacySource.surfaceDark,
+    '--surface-dark-elevated': legacySource.surfaceDarkElevated,
+    '--surface-dark-soft': legacySource.surfaceDarkSoft,
+    '--hairline': legacySource.hairline,
+    '--hairline-soft': legacySource.hairlineSoft,
+    '--ink': legacySource.ink,
+    '--body-strong': legacySource.bodyStrong,
+    '--body': legacySource.body,
+    '--muted-soft': legacySource.mutedSoft,
+    '--on-dark': legacySource.onDark,
+    '--on-dark-soft': legacySource.onDarkSoft,
+  };
+  for (const [k, v] of Object.entries(legacyVars)) root.style.setProperty(k, v);
 
   // Density + typography + radius flags (CSS hooks live in base.css)
   root.setAttribute('data-density', c.density);
@@ -513,24 +647,33 @@ export function debounce(fn, delay = 400) {
 // ---------- Chart.js theme-aware colors ----------
 // Returns color set based on current data-theme attribute.
 // SnowUI Free Style: charts must adapt to light/dark mode.
+// v8.19: colors are now read from the LIVE CSS variables so charts follow
+// the color scheme AND the brand accent (previously coral #cc785c was
+// hardcoded here — every dashboard stayed coral under Ocean Blue etc.).
 export function chartTheme() {
   const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const cs = getComputedStyle(document.documentElement);
+  const v = (name, fallback) => {
+    const val = (cs.getPropertyValue(name) || '').trim();
+    return val || fallback;
+  };
+  const primary = v('--primary', '#cc785c');
+  const tickColor = v('--text-2', isDark ? '#8A8F98' : '#62666D');
   return {
     isDark,
-    tickColor: isDark ? '#a09d96' : '#6c6a64',
-    gridColor: isDark ? 'rgba(250,249,245,0.06)' : 'rgba(20,20,19,0.06)',
-    textColor: isDark ? '#d4cfc4' : '#3d3d3a',
-    primary: '#cc785c',
-    primarySoft: 'rgba(204, 120, 92, 0.12)',
-    accent: '#5db8a6',
-    accentSoft: 'rgba(93, 184, 166, 0.12)',
-    warning: '#d4a017',
-    success: '#5db872',
-    danger: '#c64545',
-    // v8.9: cream/coral/dark-navy palette for multi-series charts
-    colors: isDark
-      ? ['#cc785c', '#5db8a6', '#d4a017', '#5db872', '#c64545', '#e8a55a', '#a09d96', '#8e8b82']
-      : ['#cc785c', '#5db8a6', '#d4a017', '#5db872', '#c64545', '#e8a55a', '#6c6a64', '#8e8b82'],
+    tickColor,
+    gridColor: v('--border', isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.08)'),
+    textColor: v('--text', isDark ? '#F7F8F8' : '#08090A'),
+    primary,
+    primarySoft: v('--primary-soft', 'rgba(204, 120, 92, 0.12)'),
+    accent: v('--accent', '#5db8a6'),
+    accentSoft: v('--accent-soft', 'rgba(93, 184, 166, 0.12)'),
+    warning: v('--warning', '#d4a017'),
+    success: v('--success', '#5db872'),
+    danger: v('--danger', '#c64545'),
+    // v8.19: multi-series palette — the accent leads, then the fixed
+    // categorical set (kept constant so series stay distinguishable).
+    colors: [primary, '#5db8a6', '#d4a017', '#5db872', '#c64545', '#e8a55a', tickColor, v('--muted', isDark ? '#62666D' : '#8A8F98')],
   };
 }
 

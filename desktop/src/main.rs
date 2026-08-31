@@ -201,6 +201,15 @@ pub fn run() {
             }
             log(app.handle(), "sidecar spawned; waiting for BILLBOOK_READY");
 
+            // v8.19: paint the boot splash with the saved color scheme.
+            // The splash (loading.html) runs on tauri.localhost BEFORE the
+            // backend is reachable — it can't fetch /api/appearance. The
+            // backend mirrors the appearance config to data/appearance.json
+            // (next to the DB, i.e. next to the exe), and we inject that
+            // JSON into the splash webview here. Best-effort: any failure
+            // leaves the splash's neutral cream defaults.
+            inject_splash_scheme(app.handle());
+
             // --- Health listener + window navigation -------------------------
             // v8.17.10: was "print the ready line and stop". Now it:
             //   - logs ALL backend output (stdout + stderr + IO errors) to
@@ -375,6 +384,76 @@ fn parse_ready_port(line: &str) -> Option<u16> {
         .find(|t| t.starts_with("port="))
         .and_then(|t| t[5..].parse::<u16>().ok())
         .or(Some(8000))
+}
+
+/// v8.19: inject the saved appearance config into the splash webview.
+///
+/// Reads `data/appearance.json` (written by POST /api/appearance; the
+/// sidecar's BILLBOOK_DATA_DIR points at <exe_dir>/data), sanity-checks it
+/// (small, JSON-object), and evals a tiny idempotent script that stores the
+/// payload on `window.__splashScheme` and calls `window.__setSplashScheme()`
+/// when the splash module has already booted. Eval racing the page load is
+/// handled from BOTH sides: the retry loop below re-fires while the window
+/// is still on the tauri.localhost splash, and js/splash-theme.js reads the
+/// payload var at module start if the eval landed first.
+fn inject_splash_scheme(app: &tauri::AppHandle) {
+    let payload = read_appearance_payload(app);
+    let Some(json) = payload else { return };
+    let js = format!(
+        "window.__splashScheme={json};\
+         if(window.__setSplashScheme)window.__setSplashScheme(window.__splashScheme);"
+    );
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        for _attempt in 1..=12u8 {
+            if let Some(w) = handle.get_webview_window("main") {
+                // Stop once the window has left the splash (backend ready).
+                let on_splash = w
+                    .url()
+                    .ok()
+                    .and_then(|u| u.host_str().map(|h| h == "tauri.localhost"))
+                    .unwrap_or(true);
+                if !on_splash {
+                    log(&handle, "splash replaced — stopping scheme injection");
+                    return;
+                }
+                // Idempotent: safe to fire repeatedly while the page loads.
+                let _ = w.eval(&js);
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+        log(&handle, "splash scheme injection finished");
+    });
+}
+
+/// Read the appearance sidecar JSON. Primary location is <exe_dir>/data
+/// (where the sidecar keeps its DB); fallback is the app data dir.
+fn read_appearance_payload(app: &tauri::AppHandle) -> Option<String> {
+    let candidates: Vec<std::path::PathBuf> = {
+        let mut v = Vec::new();
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(dir) = exe.parent() {
+                v.push(dir.join("data").join("appearance.json"));
+            }
+        }
+        if let Ok(dir) = app.path().app_data_dir() {
+            v.push(dir.join("data").join("appearance.json"));
+            v.push(dir.join("appearance.json"));
+        }
+        v
+    };
+    for path in candidates {
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            let t = text.trim();
+            // Cheap sanity check — this string is eval'd verbatim below, so
+            // it must be a small JSON object, nothing else.
+            if t.starts_with('{') && t.ends_with('}') && t.len() <= 4096 && !t.contains('<') {
+                return Some(t.to_string());
+            }
+            log(app, &format!("appearance.json failed validation: {}", path.display()));
+        }
+    }
+    None
 }
 
 /// Point the main webview window at the live backend. The window may not

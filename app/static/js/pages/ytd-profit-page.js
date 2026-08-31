@@ -88,7 +88,7 @@ route('/reports/ytd', async (el) => {
     const wrap = $('#ytd-chart-wrap');
     if (wrap && typeof Chart !== 'undefined' && r.monthly && r.monthly.length > 0) {
       const theme = chartTheme();
-      const colors = theme.colors || ['#cc785c', '#5db8a6', '#d4a017', '#5db872'];
+      const colors = theme.colors || []; // v8.19: chartTheme() derives colors from the live scheme/accent
       if (_chart) { _chart.destroy(); _chart = null; }
       const canvas = document.createElement('canvas');
       wrap.innerHTML = '';

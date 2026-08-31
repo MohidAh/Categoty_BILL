@@ -9,6 +9,9 @@
 <link rel="stylesheet" href="/static/styles/base.css">
     <link rel="stylesheet" href="/static/styles/components.css">
     <link rel="stylesheet" href="/static/styles/layout.css">
+<!-- v8.19: apply the saved color scheme (not just light/dark) to the login
+     screen — previously this page ignored the appearance color scheme. -->
+<script type="module" src="/static/js/scheme-boot.js"></script>
 <style>
 /* v8.4: Linear design system — dark-first login page */
 * { box-sizing: border-box; }
@@ -95,8 +98,8 @@ h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; letter-spacing: -0.02em
   var sun = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
   var moon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
   document.getElementById('theme-btn').innerHTML = t === 'dark' ? sun : moon;
-  var meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.content = t === 'dark' ? '#181715' : '#faf9f5';
+  // v8.19: scheme-boot.js owns the theme-color meta now (it follows the
+  // scheme's canvas, not a hardcoded cream).
   // Check if setup is needed — redirect to wizard if not initialized
   fetch('/api/setup/state').then(function(r) { return r.json(); }).then(function(state) {
     if (!state.initialized) {
@@ -114,13 +117,14 @@ h1 { margin: 0 0 4px; font-size: 22px; font-weight: 700; letter-spacing: -0.02em
 document.getElementById('theme-btn').onclick = function() {
   var cur = document.documentElement.getAttribute('data-theme');
   var next = cur === 'dark' ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', next);
   localStorage.setItem('bb-theme', next);
+  // v8.19: re-apply the full scheme for the new theme (inline scheme tokens
+  // must be recomputed — flipping data-theme alone left stale colors).
+  if (window.bbApplyTheme) { window.bbApplyTheme(next); }
+  else { document.documentElement.setAttribute('data-theme', next); }
   var sun = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
   var moon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
   document.getElementById('theme-btn').innerHTML = next === 'dark' ? sun : moon;
-  var meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.content = next === 'dark' ? '#faf9f5' : '#181715';
 };
 async function submitForm(e){
   e.preventDefault();

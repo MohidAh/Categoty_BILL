@@ -1,5 +1,5 @@
 """Auto-generated router module — extracted from main.py Phase 1."""
-import os, json, time, re, io, csv, secrets, hashlib, traceback
+import os, json, time, re, io, csv, secrets, hashlib, traceback, logging
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
@@ -33,6 +33,8 @@ from ..security import (
 
 router = APIRouter()
 
+_logger = logging.getLogger(__name__)
+
 # Backward-compat aliases
 _hash_password = hash_password
 _verify_password = verify_password
@@ -59,6 +61,8 @@ class AppearanceIn(BaseModel):
     radius: str | None = None
     # v8.18.7: whole-system color scheme (canvas + tones + suggested accent)
     color_scheme: str | None = None
+    # v8.19: seed color for the custom scheme (color_scheme === 'custom')
+    custom_scheme_base: str | None = None
 
 
 # v8.15.0 (design.md): canonical defaults for the Claude-warm design system.
@@ -67,6 +71,7 @@ APPEARANCE_DEFAULTS = {
     "theme": "light",
     "color_scheme": "warm",
     "accent_color": "#cc785c",
+    "custom_scheme_base": "#6b7280",
     "density": "comfortable",
     "font_scale": "100",
     "serif_headings": "1",
@@ -76,7 +81,42 @@ APPEARANCE_RADIUS_OPTIONS = ("compact", "standard", "roomy")
 APPEARANCE_DENSITY_OPTIONS = ("comfortable", "compact")
 # v8.18.7: valid color scheme ids (must mirror APPEARANCE_SCHEME_PRESETS
 # in app/static/js/utils.js — the frontend owns the actual token values).
-APPEARANCE_SCHEME_OPTIONS = ("warm", "ocean", "forest", "violet", "slate")
+# v8.19: + 'custom' (tokens derived client-side from custom_scheme_base).
+APPEARANCE_SCHEME_OPTIONS = ("warm", "ocean", "forest", "violet", "slate", "custom")
+
+
+def _appearance_snapshot() -> dict:
+    """Current appearance config (settings table -> plain dict)."""
+    from ..db import get_setting
+    return {
+        "theme": get_setting("appearance_theme", APPEARANCE_DEFAULTS["theme"]),
+        "color_scheme": get_setting("appearance_scheme", APPEARANCE_DEFAULTS["color_scheme"]),
+        "accent_color": get_setting("appearance_accent", APPEARANCE_DEFAULTS["accent_color"]),
+        "custom_scheme_base": get_setting("appearance_custom_base", APPEARANCE_DEFAULTS["custom_scheme_base"]),
+    }
+
+
+def _write_appearance_sidecar() -> None:
+    """v8.19: mirror the appearance config to data/appearance.json.
+
+    The Tauri boot splash (loading.html) runs on the bundled tauri.localhost
+    origin BEFORE the backend is reachable — it cannot call /api/appearance
+    and cannot read the app origin's localStorage. The Rust shell reads this
+    file at startup and injects it into the splash webview so the 2-4 second
+    startup screen matches the chosen color scheme instead of the old
+    hardcoded cream. Best-effort: failures are swallowed (the splash simply
+    falls back to its neutral defaults).
+    """
+    import json
+    try:
+        from ..config import DATA
+        data_dir = Path(DATA)  # str in tests, Path in production — accept both
+        data_dir.mkdir(parents=True, exist_ok=True)
+        (data_dir / "appearance.json").write_text(
+            json.dumps(_appearance_snapshot()), encoding="utf-8"
+        )
+    except Exception as e:  # never let cosmetic bookkeeping break a save
+        _logger.warning("could not write appearance.json: %s", e)
 
 
 
@@ -105,6 +145,7 @@ def get_appearance() -> Any:
         "theme": get_setting("appearance_theme", APPEARANCE_DEFAULTS["theme"]),
         "color_scheme": get_setting("appearance_scheme", APPEARANCE_DEFAULTS["color_scheme"]),
         "accent_color": get_setting("appearance_accent", APPEARANCE_DEFAULTS["accent_color"]),
+        "custom_scheme_base": get_setting("appearance_custom_base", APPEARANCE_DEFAULTS["custom_scheme_base"]),
         "density": get_setting("appearance_density", APPEARANCE_DEFAULTS["density"]),
         "font_scale": get_setting("appearance_font_scale", APPEARANCE_DEFAULTS["font_scale"]),
         "serif_headings": get_setting("appearance_serif_headings", APPEARANCE_DEFAULTS["serif_headings"]) == "1",
@@ -118,8 +159,8 @@ def get_appearance() -> Any:
 def set_appearance(payload: AppearanceIn) -> Any:
     # v8.15.0: validate accent color server-side — a malformed hex would
     # poison every CSS variable the theme engine sets on the client.
+    from ..db import get_setting
     if payload.accent_color is not None:
-        import re
         if not re.fullmatch(r"#[0-9a-fA-F]{6}", payload.accent_color):
             raise HTTPException(status_code=400, detail="accent_color must be a 6-digit hex like #cc785c")
     if payload.radius is not None and payload.radius not in APPEARANCE_RADIUS_OPTIONS:
@@ -128,6 +169,12 @@ def set_appearance(payload: AppearanceIn) -> Any:
         raise HTTPException(status_code=400, detail=f"density must be one of {APPEARANCE_DENSITY_OPTIONS}")
     if payload.color_scheme is not None and payload.color_scheme not in APPEARANCE_SCHEME_OPTIONS:
         raise HTTPException(status_code=400, detail=f"color_scheme must be one of {APPEARANCE_SCHEME_OPTIONS}")
+    if payload.custom_scheme_base is not None:
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}", payload.custom_scheme_base):
+            raise HTTPException(status_code=400, detail="custom_scheme_base must be a 6-digit hex like #6b7280")
+    if payload.custom_scheme_base is None and payload.color_scheme == "custom":
+        # Saving 'custom' without a seed — keep the stored/default one.
+        payload.custom_scheme_base = get_setting("appearance_custom_base", APPEARANCE_DEFAULTS["custom_scheme_base"])
     if payload.font_scale is not None:
         try:
             fs = int(payload.font_scale)
@@ -158,6 +205,11 @@ def set_appearance(payload: AppearanceIn) -> Any:
         if payload.color_scheme is not None and payload.color_scheme in APPEARANCE_SCHEME_OPTIONS:
             c.execute("INSERT INTO settings(key, value) VALUES('appearance_scheme', ?) "
                       "ON CONFLICT(key) DO UPDATE SET value = ?", (payload.color_scheme, payload.color_scheme))
+        if payload.custom_scheme_base is not None:
+            c.execute("INSERT INTO settings(key, value) VALUES('appearance_custom_base', ?) "
+                      "ON CONFLICT(key) DO UPDATE SET value = ?", (payload.custom_scheme_base, payload.custom_scheme_base))
+    # v8.19: keep the desktop boot-splash sidecar in sync with the new look.
+    _write_appearance_sidecar()
     return {"ok": True}
 
 
@@ -381,6 +433,7 @@ def set_accent_color(payload: AccentColorIn) -> Any:
     """Set the SnowUI definable brand color."""
     with db.conn() as c:
         c.execute("INSERT INTO settings(key, value) VALUES('appearance_accent', ?) ON CONFLICT(key) DO UPDATE SET value = ?", (payload.accent_color, payload.accent_color))
+    _write_appearance_sidecar()
     return {"ok": True, "accent_color": payload.accent_color}
 
 

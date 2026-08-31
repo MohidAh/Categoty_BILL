@@ -180,7 +180,7 @@ function renderDashboard(d) {
       <div class="stat-list">
         ${cats.map(c => `<div class="stat-row">
           <span class="stat-label flex items-center gap-2">
-            <span class="tag-chip" style="background:${c.color || '#cc785c'};width:8px;height:8px;padding:0;border-radius:50%"></span>
+            <span class="tag-chip" style="background:${c.color || 'var(--primary)'};width:8px;height:8px;padding:0;border-radius:50%"></span>
             ${esc(c.name || 'Uncategorized')} (Rs ${fmt(c.sell_price)})
           </span>
           <span class="stat-value">${fmtRs(c.cost)}</span>

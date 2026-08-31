@@ -5,7 +5,7 @@ import { api, apiPost, apiPut, apiDelete } from '../api.js';
 import { $, $$, esc, fmt, fmtRs, toast, showLoading, hideLoading,
          openModal, closeModal, skeletonCards, errorBox, emptyState, icon, iconHtml,
          applyAppearance, cacheAppearance, APPEARANCE_DEFAULTS, APPEARANCE_ACCENT_PRESETS,
-         APPEARANCE_SCHEME_PRESETS } from '../utils.js';
+         APPEARANCE_SCHEME_PRESETS, deriveCustomScheme } from '../utils.js';
 
 const SVG = {
   settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/></svg>',
@@ -564,7 +564,8 @@ route('/settings/appearance', async (el) => {
   // Local state — normalized against design.md defaults
   const st = {
     theme: cfg.theme === 'dark' ? 'dark' : 'light',
-    color_scheme: APPEARANCE_SCHEME_PRESETS.some(s => s.id === cfg.color_scheme) ? cfg.color_scheme : 'warm',
+    color_scheme: (APPEARANCE_SCHEME_PRESETS.some(s => s.id === cfg.color_scheme) || cfg.color_scheme === 'custom') ? cfg.color_scheme : 'warm',
+    custom_scheme_base: /^#[0-9a-fA-F]{6}$/.test(cfg.custom_scheme_base || '') ? cfg.custom_scheme_base : APPEARANCE_DEFAULTS.custom_scheme_base,
     accent_color: /^#[0-9a-fA-F]{6}$/.test(cfg.accent_color || '') ? cfg.accent_color : APPEARANCE_DEFAULTS.accent_color,
     serif_headings: !(cfg.serif_headings === false || cfg.serif_headings === '0'),
     radius: ['compact', 'standard', 'roomy'].includes(cfg.radius) ? cfg.radius : 'standard',
@@ -648,6 +649,21 @@ route('/settings/appearance', async (el) => {
             </span>
             <span class="ap-scheme-name">${s.name}${s.id === 'warm' ? ' <span class="text-dim text-sm">(default)</span>' : ''}</span>
           </button>`).join('')}
+          <button type="button" class="ap-scheme-card ${st.color_scheme === 'custom' ? 'selected' : ''}" data-scheme="custom" id="ap-scheme-custom" title="Custom — build the whole scheme from your own color">
+            <span class="ap-scheme-dots">
+              <span class="ap-scheme-dot" id="ap-c-dot-lbg"></span>
+              <span class="ap-scheme-dot" id="ap-c-dot-lel"></span>
+              <span class="ap-scheme-dot ap-scheme-dot-accent" id="ap-c-dot-acc"></span>
+              <span class="ap-scheme-dot" id="ap-c-dot-dbg"></span>
+            </span>
+            <span class="ap-scheme-name">Custom <span class="text-dim text-sm">(your color)</span></span>
+          </button>
+      </div>
+      <div id="ap-custom-row" class="mt-3" style="display:${st.color_scheme === 'custom' ? 'flex' : 'none'};gap:12px;align-items:center;flex-wrap:wrap">
+        <label class="text-sm" style="font-weight:600">Custom base color</label>
+        <input class="input" id="ap-custom-base" type="color" value="${esc(st.custom_scheme_base)}" style="width:56px;height:38px;padding:2px">
+        <input class="input font-mono" id="ap-custom-base-text" value="${esc(st.custom_scheme_base)}" style="max-width:120px" spellcheck="false">
+        <span class="text-sm text-dim">We derive the full light + dark scheme (backgrounds, borders, text) from this one color.</span>
       </div>
     </div>
 
@@ -786,17 +802,57 @@ route('/settings/appearance', async (el) => {
   });
 
   // ── Color scheme cards ─────────────────────────────────────────────
+  // Repaint the Custom card's swatch dots from the current base color.
+  const paintCustomDots = () => {
+    const d = deriveCustomScheme(st.custom_scheme_base);
+    const set = (id, bg, border) => {
+      const el = $(id); if (!el) return;
+      el.style.background = bg;
+      el.style.border = `1px solid ${border}`;
+    };
+    set('#ap-c-dot-lbg', d.light.bg, d.light.border);
+    set('#ap-c-dot-lel', d.light.elevated, d.light.border);
+    const acc = $('#ap-c-dot-acc'); if (acc) acc.style.background = st.custom_scheme_base;
+    set('#ap-c-dot-dbg', d.dark.bg, d.dark.border);
+  };
+  paintCustomDots();
+
   const setScheme = (id) => {
+    if (id === 'custom') {
+      st.color_scheme = 'custom';
+      $$('.ap-scheme-card').forEach(c => c.classList.toggle('selected', c.dataset.scheme === 'custom'));
+      $('#ap-custom-row').style.display = 'flex';
+      // The seed color doubles as the suggested accent.
+      setAccent(st.custom_scheme_base);
+      liveApply(); markDirty('appearance');
+      return;
+    }
     const s = APPEARANCE_SCHEME_PRESETS.find(x => x.id === id);
     if (!s) return;
     st.color_scheme = id;
     $$('.ap-scheme-card').forEach(c => c.classList.toggle('selected', c.dataset.scheme === id));
+    $('#ap-custom-row').style.display = 'none';
     // A scheme brings its own matching accent — the accent pickers below
     // (and the user's freedom to override) stay fully functional.
     setAccent(s.accent);
     liveApply(); markDirty('appearance');
   };
   $$('.ap-scheme-card').forEach(c => { c.onclick = () => setScheme(c.dataset.scheme); });
+
+  // ── Custom scheme base color ───────────────────────────────────────
+  const setCustomBase = (hex) => {
+    st.custom_scheme_base = hex;
+    $('#ap-custom-base').value = hex;
+    $('#ap-custom-base-text').value = hex;
+    paintCustomDots();
+    // Custom accent follows the seed while it's untouched by the user.
+    setAccent(hex);
+    liveApply(); markDirty('appearance');
+  };
+  $('#ap-custom-base').oninput = (e) => setCustomBase(e.target.value);
+  $('#ap-custom-base-text').oninput = (e) => {
+    if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) setCustomBase(e.target.value);
+  };
 
   // ── Accent presets + custom ───────────────────────────────────────
   const setAccent = (hex) => {
@@ -856,6 +912,7 @@ route('/settings/appearance', async (el) => {
         theme: st.theme,
         color_scheme: st.color_scheme,
         accent_color: st.accent_color,
+        custom_scheme_base: st.custom_scheme_base,
         density: st.density,
         font_scale: st.font_scale,
         serif_headings: st.serif_headings,
@@ -871,12 +928,18 @@ route('/settings/appearance', async (el) => {
   // ── Reset to design.md defaults ───────────────────────────────────
   $('#ap-reset-btn').onclick = async () => {
     Object.assign(st, {
-      theme: 'light', color_scheme: 'warm', accent_color: '#cc785c', serif_headings: true,
+      theme: 'light', color_scheme: 'warm', accent_color: '#cc785c',
+      custom_scheme_base: APPEARANCE_DEFAULTS.custom_scheme_base,
+      serif_headings: true,
       radius: 'standard', density: 'comfortable', font_scale: '100',
     });
     // refresh the controls to match
     $$('.appearance-theme-card').forEach(c => c.classList.toggle('selected', c.dataset.theme === 'light'));
     $$('.ap-scheme-card').forEach(c => c.classList.toggle('selected', c.dataset.scheme === 'warm'));
+    $('#ap-custom-row').style.display = 'none';
+    $('#ap-custom-base').value = APPEARANCE_DEFAULTS.custom_scheme_base;
+    $('#ap-custom-base-text').value = APPEARANCE_DEFAULTS.custom_scheme_base;
+    paintCustomDots();
     $$('.ap-swatch').forEach(s => s.classList.toggle('selected', s.dataset.accent === '#cc785c'));
     $('#ap-accent').value = '#cc785c'; $('#ap-accent-text').value = '#cc785c';
     $$('#ap-serif-seg .ap-seg-btn').forEach(b => b.classList.toggle('selected', b.dataset.serif === 'on'));
@@ -885,7 +948,7 @@ route('/settings/appearance', async (el) => {
     $('#ap-font-scale').value = '100'; $('#ap-font-scale-label').textContent = '100%';
     liveApply();
     try {
-      await apiPost('/api/appearance', { theme: st.theme, color_scheme: st.color_scheme, accent_color: st.accent_color, density: st.density, font_scale: st.font_scale, serif_headings: true, radius: st.radius });
+      await apiPost('/api/appearance', { theme: st.theme, color_scheme: st.color_scheme, accent_color: st.accent_color, custom_scheme_base: st.custom_scheme_base, density: st.density, font_scale: st.font_scale, serif_headings: true, radius: st.radius });
       cacheAppearance({ ...st, serif_headings: '1' });
       dirty.appearance = false; $('#ap-dirty-note').textContent = '';
       toast('Reset to design defaults', 'success');

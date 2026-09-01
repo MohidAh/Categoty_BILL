@@ -29,9 +29,12 @@ Companion docs:
    │  native dialog "Update?"    │             exe + .sig + latest.json)
    │         │ user clicks Yes   │
    │  download setup.exe         │
+   │  (v8.18.8: progress toast   │
+   │   in the corner; POS usable)│
    │  verify Ed25519 signature   │
    │    against compiled pubkey  │
    │         │ ok                │
+   │  toast: "closing to install"│
    │  run installer (passive UI) │
    │  app exits, NSIS relaunches │
    │  -> v8.16.0 runs            │
@@ -221,6 +224,35 @@ The check fires 8s after launch — after the dashboard is visible, before
 anyone is deep into a sale. One click ("Update now" / "Later") and the rest
 is automatic. Update runs while the shop is open are safe: the sidecar
 shutdown + passive install takes ~10-20s.
+
+### v8.18.8 — download progress toast
+Clicking "Update now" used to be followed by a 30-60s SILENT gap (the
+download — release builds have no console, so the byte counters were
+invisible) after which the app closed "out of nowhere" and the setup
+opened. The flow is now visible end-to-end, with zero frontend files
+touched:
+
+1. The confirm dialog says up front: the download runs in the background,
+   the app closes when it's done, and restarts after the install.
+2. Immediately after the click a small dark toast appears in the
+   bottom-right corner of the main webview — `Downloading BillBook
+   v8.19.0...  45% · 12.3 of 27.1 MB` with a progress bar. It is
+   `pointer-events: none`, so the POS underneath stays fully usable.
+3. The toast is painted from Rust every 600ms via `WebviewWindow::eval`
+   (`paint_update_progress` in `desktop/src/main.rs`), so it survives POS
+   page navigation (each tick re-creates the element if the page wiped
+   it) and works on every page, including the splash.
+4. When the download finishes, the toast switches to a blue
+   "Update ready — closing BillBook to install" note and the app exits
+   ~1.5s later — the close is announced, never a surprise.
+5. If the download FAILS, the toast turns red ("Update download failed —
+   you can keep working; the update will be offered again next launch"),
+   stays ~10s, then removes itself. The app keeps running.
+
+The injected script builds its DOM with `createElement` + CSSOM style
+writes only (no `innerHTML`, no inline style attributes, `textContent`
+for all text), so page CSP can never block it and nothing from
+latest.json is ever interpreted as markup.
 
 ### Sidecar rides along
 The Python POS backend is bundled as `billbook_sidecar` INSIDE the installer

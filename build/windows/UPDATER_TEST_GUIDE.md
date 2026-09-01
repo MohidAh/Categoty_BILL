@@ -169,13 +169,22 @@ Close BillBook (right-click tray icon → Quit) and launch it again from the
 Start Menu. **Nothing to click in DevTools** — about 8 seconds after launch
 the Rust shell checks the endpoint by itself:
 
-1. Native dialog appears: *"BillBook v8.15.0 is available. Install the update
-   now?"* → click **Update now**.
-2. The updater downloads `BillBook_8.15.0_x64-setup.exe`, verifying its
+1. Native dialog appears: *"BillBook v8.15.0 is available. Update now? The
+   update downloads in the background while you keep working..."* → click
+   **Update now**.
+2. IMMEDIATELY a small dark progress toast appears in the bottom-right
+   corner of the window (v8.18.8): *"Downloading BillBook v8.15.0...
+   45% · 12.3 of 27.1 MB"* with a green progress bar. The POS underneath
+   stays usable — click around the app while it downloads.
+3. The updater downloads `BillBook_8.15.0_x64-setup.exe`, verifying its
    Ed25519 signature against the pubkey compiled into v8.14 **before**
    anything runs.
-3. BillBook exits, the NSIS installer runs in passive mode (progress bar,
-   no clicks) and relaunches the app when done.
+4. When the download finishes the toast turns blue: *"Update ready —
+   closing BillBook to install"*. About 1.5s later BillBook exits, the
+   NSIS installer runs in passive mode (progress bar, no clicks) and
+   relaunches the app when done.
+   (If the download FAILS, the toast turns red, stays ~10s, removes
+   itself, and the app keeps running — retry on next launch.)
 
 Watch the fake-cdn terminal — you should see both fetches:
 

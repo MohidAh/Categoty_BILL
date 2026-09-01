@@ -29,6 +29,14 @@
 //
 // See build/windows/TAURI_AUTO_UPDATE_GUIDE.md for the full walkthrough.
 
+// v8.18.8 UPDATE UX: after the "Update now" click the installer used to
+//   download in total silence for 30-60s (release builds have no console,
+//   so the byte-counter println!s were invisible) and then the app closed
+//   "out of nowhere" and the setup opened. Now a live progress toast is
+//   painted into the main webview (Rust-side via WebviewWindow::eval —
+//   zero frontend files touched), and "closing to install" is announced
+//   on screen right before the exit.
+
 // v8.15.2 FIX: standard Tauri attribute - hides the black console window
 // in release builds. println!/eprintln! logs then only appear in debug
 // builds (a POS should never flash a cmd.exe window at shop staff).
@@ -79,6 +87,34 @@ static SIDECAR_CHILD: OnceLock<Mutex<Option<CommandChild>>> = OnceLock::new();
 /// True while the auto-updater is replacing the app: the sidecar's death
 /// is then EXPECTED and must not trigger the "backend stopped" dialog.
 static UPDATING: AtomicBool = AtomicBool::new(false);
+
+// v8.18.8 UPDATE VISIBILITY: live state of an in-flight update download.
+// Written by the updater's download callbacks, read ~every 600ms by the
+// progress-toast painter task (paint_update_progress below).
+#[derive(Clone, Debug)]
+enum UpdatePhase {
+    /// Downloading the installer; bytes so far / total (total unknown
+    /// until the server sends Content-Length).
+    Downloading { downloaded: u64, total: Option<u64> },
+    /// Download finished; the app is about to close and run the installer.
+    Finalizing,
+    /// Download failed; the app stays alive and usable.
+    Failed,
+}
+
+static UPDATE_PHASE: OnceLock<Mutex<UpdatePhase>> = OnceLock::new();
+
+fn update_phase() -> &'static Mutex<UpdatePhase> {
+    UPDATE_PHASE.get_or_init(|| Mutex::new(UpdatePhase::Downloading { downloaded: 0, total: None }))
+}
+
+/// Store the live update state (called from download callbacks on worker
+/// threads — the Mutex keeps that safe and cheap).
+fn set_update_phase(phase: UpdatePhase) {
+    if let Ok(mut guard) = update_phase().lock() {
+        *guard = phase;
+    }
+}
 
 fn sidecar_child() -> &'static Mutex<Option<CommandChild>> {
     SIDECAR_CHILD.get_or_init(|| Mutex::new(None))
@@ -499,10 +535,19 @@ async fn check_for_updates(app: &tauri::AppHandle) -> tauri_plugin_updater::Resu
 
     // Native confirm dialog. blocking_show() panics on the main thread; we
     // are on an async-runtime worker thread here, so it is safe.
+    //
+    // v8.18.8: the text now describes what actually happens. The old text
+    // ("The app will restart automatically when finished") hid the
+    // 30-60s silent download AND the mid-session close — users reported
+    // the app "closes out of nowhere" after clicking Update.
     let install = app
         .dialog()
         .message(format!(
-            "BillBook v{} is available.\n\nInstall the update now? The app will restart automatically when finished.",
+            "BillBook v{} is available.\n\n\
+             Update now? The update downloads in the background while you \
+             keep working — a small progress box appears in the corner of \
+             the screen. When the download finishes, BillBook closes \
+             briefly to install and restarts automatically.",
             update.version
         ))
         .title("BillBook Update")
@@ -517,24 +562,61 @@ async fn check_for_updates(app: &tauri::AppHandle) -> tauri_plugin_updater::Resu
         return Ok(());
     }
 
+    // v8.18.8: start painting the progress toast BEFORE the first byte
+    // arrives — the user just clicked "Update now", so something visible
+    // must happen immediately (the download itself takes 30-60s+).
+    set_update_phase(UpdatePhase::Downloading { downloaded: 0, total: None });
+    let painter_app = app.clone();
+    let painter_version = update.version.clone();
+    tauri::async_runtime::spawn(async move {
+        paint_update_progress(painter_app, painter_version).await;
+    });
+
     // v8.18.2 REORDERED: download FIRST while the app (and the POS) stay
     // fully usable — previously the sidecar was killed before a download
     // that could take minutes, leaving a frozen-looking shop terminal.
     // v8.18.4 FIX: tauri-plugin-updater 2.10 split download()/install() —
     // install() now takes the downloaded bytes and is NOT async. The old
     // `update.install().await` form no longer compiles (E0061 + E0277).
+    // v8.18.8: the on_chunk callback also feeds the toast painter so the
+    // user SEES the progress instead of a silent 30-60s gap.
     let mut downloaded: u64 = 0;
-    let installer_bytes = update
+    let download_result = update
         .download(
             |chunk_length, content_length| {
                 downloaded += chunk_length as u64;
+                set_update_phase(UpdatePhase::Downloading {
+                    downloaded,
+                    total: content_length,
+                });
                 if let Some(total) = content_length {
                     println!("[billbook-updater] {downloaded}/{total} bytes");
                 }
             },
-            || println!("[billbook-updater] download finished"),
+            || {
+                println!("[billbook-updater] download finished");
+                set_update_phase(UpdatePhase::Finalizing);
+            },
         )
-        .await?;
+        .await;
+
+    let installer_bytes = match download_result {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            // The POS keeps working. The toast switches to a failure note
+            // for ~10s, then removes itself; the update is simply offered
+            // again on the next launch.
+            set_update_phase(UpdatePhase::Failed);
+            log(app, &format!("update download failed: {e}"));
+            return Err(e);
+        }
+    };
+
+    // v8.18.8: give the "closing to install" toast a moment on screen
+    // BEFORE we tear the app down. Until now the exit landed 30-60s after
+    // the confirm click with zero warning — exactly the "app closed and
+    // setup opened out of nowhere" report.
+    tokio::time::sleep(Duration::from_millis(1500)).await;
 
     // v8.17.14 + v8.18.2: stop the sidecar BEFORE the installer runs,
     // in three layers: (1) our child handle, (2) a name-based tree kill
@@ -565,4 +647,170 @@ async fn check_for_updates(app: &tauri::AppHandle) -> tauri_plugin_updater::Resu
     #[cfg(not(windows))]
     app.restart();
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// v8.18.8 — update progress toast (painted into the main webview)
+// ---------------------------------------------------------------------------
+// Why eval-injection instead of a frontend file: the BillBook UI is plain
+// HTML/JS served by the sidecar, spread over many pages; a toast added to
+// every page would be invasive and forgettable. One self-contained script
+// injected from Rust works on EVERY page (including the splash), survives
+// page navigation (the painter re-evals every 600ms), needs zero frontend
+// changes and zero vendored JS bundles, and cannot be blocked by page CSP
+// (WebView2's ExecuteScript is not subject to CSP, and the script builds
+// its DOM with createElement + CSSOM style writes only — no innerHTML, no
+// inline style attributes, textContent for all text).
+
+/// The toast script. Idempotent: creates the element once (id lookup),
+/// then just updates title/detail/bar. Placeholder tokens are replaced
+/// in toast_script() AFTER JS-string-escaping the values.
+const TOAST_JS: &str = r#"(function(){
+var T=document.getElementById('__bbUpdateToast');
+if(!T){
+T=document.createElement('div');T.id='__bbUpdateToast';
+T.style.position='fixed';T.style.right='18px';T.style.bottom='18px';
+T.style.zIndex='2147483647';T.style.minWidth='250px';T.style.maxWidth='340px';
+T.style.padding='10px 14px 12px 14px';T.style.borderRadius='10px';
+T.style.background='rgba(17,24,39,0.96)';T.style.color='#ffffff';
+T.style.boxShadow='0 8px 24px rgba(0,0,0,0.35)';T.style.pointerEvents='none';
+T.style.fontFamily='"Segoe UI",system-ui,sans-serif';T.style.fontSize='13px';
+T.style.lineHeight='1.45';
+var H=document.createElement('div');H.id='__bbUpdateToastTitle';
+H.style.fontWeight='600';H.style.marginBottom='2px';
+var D=document.createElement('div');D.id='__bbUpdateToastDetail';D.style.opacity='0.85';
+var K=document.createElement('div');K.id='__bbUpdateToastTrack';
+K.style.height='4px';K.style.marginTop='8px';K.style.borderRadius='2px';
+K.style.background='rgba(255,255,255,0.22)';K.style.overflow='hidden';
+var B=document.createElement('div');B.id='__bbUpdateToastBar';
+B.style.height='100%';B.style.width='0%';B.style.borderRadius='2px';
+B.style.background='#34d399';B.style.transition='width 0.5s ease';
+K.appendChild(B);T.appendChild(H);T.appendChild(D);T.appendChild(K);
+(document.body||document.documentElement).appendChild(T);
+}
+var h=document.getElementById('__bbUpdateToastTitle');
+var d=document.getElementById('__bbUpdateToastDetail');
+var b=document.getElementById('__bbUpdateToastBar');
+var k=document.getElementById('__bbUpdateToastTrack');
+if(h){h.textContent='__TITLE__';}
+if(d){d.textContent='__DETAIL__';}
+if(b){b.style.width='__WIDTH__';b.style.background='__BAR_COLOR__';}
+if(k){k.style.display='__TRACK_DISPLAY__';}
+})();"#;
+
+/// Remove the toast (used after a failed download, once the failure note
+/// has been on screen long enough to read).
+const REMOVE_TOAST_JS: &str = r#"(function(){var d=document.getElementById('__bbUpdateToast');if(d&&d.parentNode){d.parentNode.removeChild(d);}})();"#;
+
+/// Escape a value for embedding inside a single-quoted JS string literal.
+fn js_str(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('\'', "\\'")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+}
+
+/// The update version comes from latest.json. It is already HTTPS +
+/// Ed25519-verified and semver-parsed by the updater plugin, but the toast
+/// is eval'd into a webview, so belt-and-braces: keep only characters that
+/// can never break out of the JS string or the toast layout.
+fn sanitize_version(v: &str) -> String {
+    v.chars()
+        .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+'))
+        .take(40)
+        .collect()
+}
+
+fn mb(bytes: u64) -> String {
+    format!("{:.1} MB", bytes as f64 / 1_048_576.0)
+}
+
+/// Build the toast script for the current phase (see TOAST_JS above).
+fn toast_script(phase: &UpdatePhase, version: &str) -> String {
+    let ver = sanitize_version(version);
+    let (title, detail, width, color, track) = match phase {
+        UpdatePhase::Downloading { downloaded, total } => match total {
+            Some(t) if *t > 0 => {
+                let done = (*downloaded).min(*t);
+                let pct = (done * 100 / *t).min(100);
+                (
+                    format!("Downloading BillBook v{ver}..."),
+                    format!("{pct}% · {} of {}", mb(done), mb(*t)),
+                    format!("{pct}%"),
+                    "#34d399",
+                    true,
+                )
+            }
+            // Server sent no (usable) Content-Length: no % possible.
+            _ => (
+                format!("Downloading BillBook v{ver}..."),
+                format!("{} downloaded so far", mb(*downloaded)),
+                "100%".to_string(),
+                "rgba(52,211,153,0.4)",
+                false,
+            ),
+        },
+        UpdatePhase::Finalizing => (
+            "Update ready — closing BillBook to install".to_string(),
+            "The app closes now and restarts automatically when finished.".to_string(),
+            "100%".to_string(),
+            "#60a5fa",
+            true,
+        ),
+        UpdatePhase::Failed => (
+            "Update download failed".to_string(),
+            "You can keep working — the update will be offered again next launch.".to_string(),
+            "100%".to_string(),
+            "#f87171",
+            true,
+        ),
+    };
+    TOAST_JS
+        .replace("__TITLE__", &js_str(&title))
+        .replace("__DETAIL__", &js_str(&detail))
+        .replace("__WIDTH__", &width)
+        .replace("__BAR_COLOR__", color)
+        .replace("__TRACK_DISPLAY__", if track { "block" } else { "none" })
+}
+
+/// Paint the update progress toast into the main webview every 600ms
+/// until the update reaches a terminal state. Re-evaluating is idempotent
+/// (element reuse by id) and re-CREATES the toast after a POS page
+/// navigation wiped it. The toast is pointer-events:none, so the POS
+/// underneath stays fully usable while the download runs.
+async fn paint_update_progress(app: tauri::AppHandle, version: String) {
+    const TICK: Duration = Duration::from_millis(600);
+    let mut terminal_ticks: u32 = 0;
+    loop {
+        let phase = update_phase().lock().ok().map(|g| g.clone());
+        let Some(phase) = phase else { return };
+        let js = toast_script(&phase, &version);
+        if let Some(w) = app.get_webview_window("main") {
+            let _ = w.eval(&js);
+        }
+        match phase {
+            UpdatePhase::Downloading { .. } => {}
+            UpdatePhase::Finalizing => {
+                // The app exits on this path within ~2s; stop painting if
+                // it somehow doesn't (install failed -> app.restart()).
+                terminal_ticks += 1;
+                if terminal_ticks > 12 {
+                    return;
+                }
+            }
+            UpdatePhase::Failed => {
+                // Show the failure note for ~10s, then remove the toast
+                // (the POS keeps working; update re-offered next launch).
+                terminal_ticks += 1;
+                if terminal_ticks >= 16 {
+                    if let Some(w) = app.get_webview_window("main") {
+                        let _ = w.eval(REMOVE_TOAST_JS);
+                    }
+                    return;
+                }
+            }
+        }
+        tokio::time::sleep(TICK).await;
+    }
 }

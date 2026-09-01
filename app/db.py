@@ -182,6 +182,40 @@ ACTIVE_BILL_FILTER = "b.deleted_at IS NULL"
 ACTIVE_BILL_CONFIRMED_FILTER = "b.status = 'confirmed' AND b.deleted_at IS NULL"
 
 
+def clamp_page(page: int, total: int, page_size: int) -> int:
+    """v8.19.1: Clamp a requested page number into the valid range [1, pages_total].
+
+    Fixes the "stuck on an empty page" UX bug: when the user is on the LAST
+    page of a list and deletes everything on it (or applies a filter that
+    shrinks the result set), the next request for that page number would
+    return an empty page and the UI would sit on a blank table. Every
+    paginated list endpoint now clamps the requested page to the last page
+    that still has rows, so the client is automatically served (and told,
+    via the response's "page" field) the nearest valid page instead.
+
+    Rules:
+      - total == 0  → page 1 (empty list, callers render their empty state)
+      - page < 1    → 1
+      - page > last → last  (e.g. page 5 of 3 → 3; deleting the last page's
+                      rows drops you to the new last page, not a blank one)
+
+    Args:
+        page: Requested 1-based page number.
+        total: Total matching rows (already filtered).
+        page_size: Rows per page (>= 1).
+
+    Returns:
+        The clamped page number the endpoint should actually serve.
+    """
+    if page_size is None or page_size < 1:
+        return 1
+    page = int(page or 1)
+    if total <= 0:
+        return 1
+    pages_total = (int(total) + page_size - 1) // page_size
+    return max(1, min(page, pages_total))
+
+
 def conn():
     c = _connect()  # v8.14.0: uses SQLCipher if a key is configured
     # v8.5.4: journal_mode=WAL is persistent — set once in init(), not per connection.

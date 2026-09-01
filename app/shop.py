@@ -323,6 +323,11 @@ def get_expenses(date: str = "", limit: int = 50, month: str = "",
         count_sql = sql.replace("SELECT e.*, ec.name AS category_name, ec.budget_monthly ", "SELECT COUNT(*) AS n ", 1)
         total = c.execute(count_sql, args).fetchone()["n"]
 
+        # v8.19.1: clamp the page (last-page deletion / filter shrink)
+        if use_pagination:
+            page = db.clamp_page(page, total, page_size)
+            offset = (page - 1) * page_size
+
         sql += " ORDER BY e.id DESC LIMIT ? OFFSET ?"
         args += [page_size, offset]
         rows = c.execute(sql, args).fetchall()

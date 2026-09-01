@@ -57,6 +57,13 @@ route('/pos/sales', async (el) => {
     try {
       // v8.4: Use paginated API — returns {sales, total, page, page_size, pages_total}
       const data = await api(`/api/sales?page=${page}&page_size=${pageSize}${dateParam}`);
+      // v8.19.1: backend clamps the page when the requested one no longer
+      // exists (deleted the last page's sales / date filter shrank the
+      // result) — follow it instead of sitting on an empty page.
+      if (data && data.page && Number(data.page) !== Number(page)) {
+        page = data.page;
+      }
+      currentPage = page;
       const sales = data.sales || data || [];
       const total = data.total || sales.length;
       const pagesTotal = data.pages_total || 1;

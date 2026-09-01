@@ -75,10 +75,8 @@ def list_suppliers(q: str = "", page: int = 0, page_size: int = 0,
     if use_pagination:
         page = max(1, page)
         page_size = min(max(1, page_size or 50), 500)
-        offset = (page - 1) * page_size
     else:
         page_size = 500  # safety cap for non-paginated calls
-        offset = 0
 
     with db.conn() as c:
         # v8.15.0: Dynamic sort
@@ -89,17 +87,26 @@ def list_suppliers(q: str = "", page: int = 0, page_size: int = 0,
             "created": "created_at",
         }, default="name ASC, id DESC")
         if q:
-            base_sql = ("SELECT * FROM suppliers WHERE deleted_at IS NULL AND (name LIKE ? OR phone LIKE ? OR address LIKE ?) ")
+            base_where = ("deleted_at IS NULL AND (name LIKE ? OR phone LIKE ? OR address LIKE ?)")
             base_args = [f"%{q}%", f"%{q}%", f"%{q}%"]
-            count_sql = "SELECT COUNT(*) AS n FROM suppliers WHERE deleted_at IS NULL AND (name LIKE ? OR phone LIKE ? OR address LIKE ?)"
-            rows = c.execute(
-                base_sql + f"ORDER BY {order_clause} LIMIT ? OFFSET ?",
-                base_args + [page_size, offset],
-            ).fetchall()
-            total = c.execute(count_sql, base_args).fetchone()["n"]
+            total = c.execute(
+                f"SELECT COUNT(*) AS n FROM suppliers WHERE {base_where}",
+                base_args,
+            ).fetchone()["n"]
         else:
-            total = c.execute("SELECT COUNT(*) AS n FROM suppliers WHERE deleted_at IS NULL").fetchone()["n"]
-            rows = c.execute(f"SELECT * FROM suppliers WHERE deleted_at IS NULL ORDER BY {order_clause} LIMIT ? OFFSET ?", (page_size, offset)).fetchall()
+            base_where = "deleted_at IS NULL"
+            base_args = []
+            total = c.execute(
+                "SELECT COUNT(*) AS n FROM suppliers WHERE deleted_at IS NULL"
+            ).fetchone()["n"]
+        # v8.19.1: clamp the page (last-page deletion / filter shrink)
+        if use_pagination:
+            page = db.clamp_page(page, total, page_size)
+        rows = c.execute(
+            f"SELECT * FROM suppliers WHERE {base_where} "
+            f"ORDER BY {order_clause} LIMIT ? OFFSET ?",
+            base_args + [page_size, (page - 1) * page_size if use_pagination else 0],
+        ).fetchall()
 
     suppliers_list = [dict(r) for r in rows]
     if use_pagination:

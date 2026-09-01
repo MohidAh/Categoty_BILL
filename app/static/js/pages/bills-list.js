@@ -28,7 +28,9 @@ route('/bills', async (el, path, q) => {
     q: '', status: '', payment: '', sort_by: '', sort_order: 'desc', page: 1,
   });
   st.syncUrlIfRestored();
-  const page = st.val('page');
+  // v8.19.1: `page` is let (not const) — the backend may clamp it to the
+  // last valid page (deleted last page / filter shrink) and we reassign here
+  let page = st.val('page');
   const status = st.val('status');
   const search = st.val('q');
   const payment = st.val('payment');
@@ -128,6 +130,13 @@ route('/bills', async (el, path, q) => {
       $('#bills-table').innerHTML = errorBox(e.message, "location.reload()");
       return;
     }
+    // v8.19.1: backend clamps the page when the requested one no longer
+    // exists (deleted the last page's rows / filter shrank the result) —
+    // follow it so the pager, URL and saved state show the page served.
+    if (data.page && Number(data.page) !== Number(pageNum)) {
+      pageNum = data.page;
+      st.replace({ page: data.page });
+    }
     renderTable(data, pageNum, q, statusV, pay, sb, so);
   }
 
@@ -137,6 +146,12 @@ route('/bills', async (el, path, q) => {
   } catch (e) {
     $('#bills-table').innerHTML = errorBox(e.message, "location.reload()");
     return;
+  }
+  // v8.19.1: follow a backend-clamped page (deleted last page / filter
+  // shrink) — e.g. user deletes everything on page 5, is served page 4
+  if (data.page && Number(data.page) !== Number(page)) {
+    page = data.page;
+    st.replace({ page: data.page });
   }
 
   // Selection state — must be outside renderTable so it persists across re-renders

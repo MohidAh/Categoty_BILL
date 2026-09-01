@@ -387,7 +387,17 @@ def local_license_settings() -> dict:
 
 
 def reapply_license_settings(rows: dict) -> int:
-    """Re-write saved license_* rows into the live DB (post-restore).
+    """Make the live DB's license state EXACTLY equal `rows` (post-restore).
+
+    v8.19.1: delete-first semantics. A restore can bring in a foreign
+    license (legacy backups made before the scrub-on-backup feature), so
+    simply SET-ing the saved rows on top could leave stale foreign
+    license_* keys behind. We now DELETE every license_* row first, then
+    re-write this machine's snapshot — the restored DB ends up with
+    precisely the license state the machine had before the restore:
+      - licensed machine → stays licensed (own rows restored verbatim)
+      - unlicensed machine → stays unlicensed (foreign rows wiped, not
+        inherited — a foreign key would only lock it with machine_mismatch)
 
     Returns the number of rows re-applied. Must never raise into the
     restore flow — a failure is logged and swallowed (worst case the
@@ -395,11 +405,14 @@ def reapply_license_settings(rows: dict) -> int:
     """
     applied = 0
     try:
-        for k, v in (rows or {}).items():
-            if not str(k).startswith("license_"):
-                continue  # defensive: only license rows belong here
-            db.set_setting(str(k), str(v))
-            applied += 1
+        with db.write_tx() as c:
+            c.execute("DELETE FROM settings WHERE key LIKE ?", (_LICENSE_SETTING_LIKE,))
+            for k, v in (rows or {}).items():
+                if not str(k).startswith("license_"):
+                    continue  # defensive: only license rows belong here
+                c.execute(
+                    "INSERT INTO settings(key, value) VALUES(?, ?)", (str(k), str(v)))
+                applied += 1
         _reset_cache()
         if applied:
             logger.info("Re-applied %d license setting(s) after DB restore", applied)

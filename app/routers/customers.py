@@ -84,7 +84,6 @@ def list_customers(q: str = "", page: int = 1, page_size: int = 50,
                    sort_by: str = "", sort_order: str = "desc") -> Any:
     if q:
         return {"customers": shop_mod.search_customers(q)}
-    offset = (page - 1) * page_size if page > 0 else 0
     # v8.15.0: Dynamic sort
     order_clause = db.validate_sort(sort_by, sort_order, {
         "name": "name",
@@ -96,9 +95,11 @@ def list_customers(q: str = "", page: int = 1, page_size: int = 50,
     }, default="total_spent DESC, id DESC")
     with db.conn() as c:
         total = c.execute("SELECT COUNT(*) AS n FROM customers WHERE deleted_at IS NULL").fetchone()["n"]
+        # v8.19.1: clamp the page (last-page deletion / filter shrink)
+        page = db.clamp_page(page, total, page_size)
         rows = c.execute(
             f"SELECT * FROM customers WHERE deleted_at IS NULL ORDER BY {order_clause} LIMIT ? OFFSET ?",
-            (page_size, offset),
+            (page_size, (page - 1) * page_size),
         ).fetchall()
     return {"customers": [dict(r) for r in rows], "total": total, "page": page, "pages_total": (total + page_size - 1) // page_size}
 

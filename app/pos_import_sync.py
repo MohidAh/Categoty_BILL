@@ -403,6 +403,16 @@ def import_pos_backup(zip_path: str) -> dict:
         bag_internal_to_category = _ensure_bags_categories(item_master) if item_master else {}
         # Also keep a generic bags_category_id as a fallback (legacy v8.5 path)
         bags_category_id = _ensure_bags_category() if item_master else None
+        # v8.19.1: bag categories track "qty SOLD", not "purchased − sold"
+        # (bag purchases are EXPENSES, never entered as bills — see the
+        # block comment in profit_engine.sync_bags_stock_to_sold). Computed
+        # AFTER _ensure_bags_categories so freshly auto-created bag
+        # categories are included. Bag sale items are EXCLUDED from the
+        # normal per-sale stock decrement below; the end-of-import sync
+        # raises each bag category's stock to its total sold.
+        from .profit_engine import bag_category_ids as _bag_category_ids
+        with conn() as c:
+            bags_stock_ids = _bag_category_ids(c)
         # NOTE: v8.5.2 does NOT pre-purchase bag stock. The user uploads real
         # supplier bills via BillBook's normal flow — apply_purchase_to_state
         # then increases each bag category's stock + sets the correct avg_cost.
@@ -842,6 +852,12 @@ def import_pos_backup(zip_path: str) -> dict:
                 from .profit_engine import apply_sale_to_state
                 for item in sale_items_inserted:
                     if item["category_id"]:
+                        # v8.19.1: bag categories never take the sale decrement
+                        # here — their stock tracks "qty sold" instead (bag
+                        # purchases are expenses, not bills). The end-of-import
+                        # sync_bags_stock_to_sold() raises them to total sold.
+                        if item["category_id"] in bags_stock_ids:
+                            continue
                         try:
                             apply_sale_to_state(
                                 item["category_id"], item["qty"],
@@ -1054,6 +1070,19 @@ def import_pos_backup(zip_path: str) -> dict:
 
         # ── Finalize the import run ──────────────────────────────────────
         total_sales_amount = round(sum(sales_by_date.values()), 2)
+
+        # v8.19.1: Bags rule — after all sales are in, raise every bag
+        # category's stock to its total qty sold (never downward — see
+        # profit_engine.sync_bags_stock_to_sold). Runs even when this import
+        # added no new bag sales, so the first import after upgrading heals
+        # legacy negative bag stocks too.
+        try:
+            from .profit_engine import sync_bags_stock_to_sold as _sync_bags
+            bags_stock_synced = _sync_bags()
+        except Exception as _e:
+            logger.warning("bags stock sync failed: %s", _e, exc_info=True)
+            bags_stock_synced = []
+
         notes_parts = []
         if any("unknown category" in w for w in warnings_list):
             notes_parts.append(f"{sum(1 for w in warnings_list if 'unknown category' in w)} sales had unknown cost")
@@ -1077,7 +1106,8 @@ def import_pos_backup(zip_path: str) -> dict:
              "sales_imported": sales_imported, "expenses_imported": expenses_imported,
              "expenses_updated": expenses_updated,
              "skipped": skipped_duplicates, "shop_name": shop_name,
-             "total_sales_amount": total_sales_amount, "import_run_id": run_id},
+             "total_sales_amount": total_sales_amount, "import_run_id": run_id,
+             "bags_stock_synced": bags_stock_synced},
         )
 
         return {
@@ -1095,6 +1125,8 @@ def import_pos_backup(zip_path: str) -> dict:
             "total_cogs": round(total_cogs, 2),
             "warnings": warnings_list[:50],  # cap to avoid huge payloads
             "warning_count": len(warnings_list),
+            # v8.19.1: bag categories whose stock was raised to total sold
+            "bags_stock_synced": bags_stock_synced,
             # PR 6: signal to the UI that a rebuild is needed on next boot
             "stock_state_dirty": True,
             "rebuild_required": True,
@@ -1193,12 +1225,19 @@ def delete_pos_import(import_run_id: int) -> dict:
 
         items_to_reverse = []  # list of (category_id, qty)
         customer_reversals = []  # list of (customer_id, total, is_credit)
+        # v8.19.1: bag categories never took the sale decrement on import
+        # (their stock tracks "qty sold" instead) — reversing them here would
+        # double-bump the stock. Exclude them from the reversal.
+        from .profit_engine import bag_category_ids as _bag_category_ids
+        bags_stock_ids = _bag_category_ids(c)
         for sale_id in sale_ids:
             for it in c.execute(
                 "SELECT category_id, qty FROM sale_items WHERE sale_id=?",
                 (sale_id,)
             ).fetchall():
                 if it["category_id"]:
+                    if int(it["category_id"]) in bags_stock_ids:
+                        continue  # bag category — stock tracks sold, no reversal
                     try:
                         items_to_reverse.append((int(it["category_id"]), float(it["qty"])))
                     except (TypeError, ValueError):

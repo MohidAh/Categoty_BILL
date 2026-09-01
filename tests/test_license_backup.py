@@ -212,20 +212,22 @@ def test_restore_scrubbed_backup_on_unlicensed_machine_stays_locked(
 def test_restore_legacy_foreign_backup_on_unlicensed_machine_locks(
         tmp_db_path, real_gate, owner_pin):
     """Unlicensed machine restores a legacy backup that still carries PC-A's
-    license -> the foreign license lands in the DB but fails the machine
-    fingerprint check: locked, with the machine_mismatch reason."""
+    license -> v8.19.1 delete-first reapply WIPES the foreign rows (they were
+    never this machine's): it stays unlicensed with the plain 'missing'
+    reason — the normal activation screen, not a confusing machine_mismatch
+    from a license that was never entered on this machine."""
     r = create_backup()
     backup = Path(r["path"])
     _plant_in_backup(backup, {"license_key": mint(sid=FOREIGN_SID, no=50)})
     res = restore_backup(RestoreBackupIn(backup_name=r["backup"],
                                          manager_pin=owner_pin))
     assert res["ok"] is True and res["license_preserved"] is False
-    # The foreign license IS in the DB (legacy backup), but it locks:
-    assert db.get_setting("license_key", "") == mint(sid=FOREIGN_SID, no=50)
+    # v8.19.1: the foreign license is NOT inherited — the DB stays license-free
+    assert db.get_setting("license_key", "") == ""
     licensing._reset_cache()
     state = licensing.license_state()
     assert state["activated"] is False
-    assert state["reason"] == licensing.R_MACHINE
+    assert state["reason"] == licensing.R_MISSING
 
 
 def test_restore_rejects_wrong_pin(tmp_db_path, real_gate, owner_pin):
@@ -233,6 +235,121 @@ def test_restore_rejects_wrong_pin(tmp_db_path, real_gate, owner_pin):
     with pytest.raises(Exception):
         restore_backup(RestoreBackupIn(backup_name=r["backup"],
                                        manager_pin="wrong-pin"))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 5. v8.19.1: the UI restore path (/api/backup/restore in bills.py — the
+#    Settings → Backups → Restore flow) follows the SAME policy.
+#    TAU-41 only fixed /api/maintenance/restore; the UI endpoint silently
+#    wiped the local license whenever a foreign backup was restored.
+# ═══════════════════════════════════════════════════════════════════════════
+
+from app.routers import bills as bills_router
+
+
+def _make_backup_dir(name: str, source_db: Path, plant: dict | None = None,
+                     scrub: bool = False) -> str:
+    """Create BACKUPS/<name>/billbook.db from source_db (optionally
+    planting foreign license rows = legacy backup, or scrubbing = current
+    version's backup). Returns the backup dir name.
+
+    Uses the sqlite3 backup API (NOT shutil.copy2) — the live DB runs in
+    WAL mode and copy2 would miss everything still sitting in the -wal file.
+    """
+    backup_dir = Path(bills_router.BACKUPS) / name
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    target = backup_dir / "billbook.db"
+    src = sqlite3.connect(str(source_db))
+    dst = sqlite3.connect(str(target))
+    try:
+        src.backup(dst)
+    finally:
+        dst.close()
+        src.close()
+    if plant or scrub:
+        con = sqlite3.connect(str(target))
+        try:
+            if scrub:
+                con.execute("DELETE FROM settings WHERE key LIKE 'license_%'")
+            for k, v in (plant or {}).items():
+                con.execute(
+                    "INSERT OR REPLACE INTO settings(key, value) VALUES(?,?)",
+                    (k, v))
+            con.commit()
+        finally:
+            con.close()
+    return name
+
+
+def test_ui_restore_foreign_backup_keeps_own_license(
+        tmp_db_path, real_gate, owner_pin):
+    """THE reported bug: licensed PC-B restores a backup that came from a
+    different PC through Settings → Backups → Restore (/api/backup/restore)
+    -> PC-B keeps its own license (previously: wiped, forced re-activation)."""
+    my_key = mint(no=60)
+    assert licensing.activate(my_key)[0] is True
+
+    # Build PC-A's backup FIRST (from the current live DB), carrying a
+    # FOREIGN license + PC-A's data marker (legacy pre-scrub backup).
+    name = _make_backup_dir("foreign_pc_a", Path(db.DB_PATH), plant={
+        "license_key": mint(sid=FOREIGN_SID, no=61),
+        "license_payload": '{"no": 61}',
+        "pc_a_marker": "yes",
+    })
+    # PC-B-only marker, set AFTER the backup was taken — proves the DB was
+    # really replaced by the restore.
+    db.set_setting("pc_b_marker", "here")
+
+    res = bills_router.restore_backup(
+        {"name": name, "manager_pin": owner_pin})
+    assert res["ok"] is True
+    assert res["license_preserved"] is True
+    assert res["license_settings_reapplied"] >= 1
+    # PC-A's data arrived (the DB really was replaced)...
+    assert db.get_setting("pc_a_marker", "") == "yes"
+    assert db.get_setting("pc_b_marker", "") == ""
+    # ...but PC-B's OWN license survived — no re-activation needed:
+    assert db.get_setting("license_key", "") == my_key
+    licensing._reset_cache()
+    assert licensing.is_activated() is True
+
+
+def test_ui_restore_scrubbed_backup_keeps_own_license(
+        tmp_db_path, real_gate, owner_pin):
+    """Same flow with a CURRENT-version backup (license-free) — the everyday
+    'restore my own backup' recovery keeps the machine licensed."""
+    my_key = mint(no=62)
+    assert licensing.activate(my_key)[0] is True
+    name = _make_backup_dir("own_data", Path(db.DB_PATH), scrub=True)
+    res = bills_router.restore_backup(
+        {"name": name, "manager_pin": owner_pin})
+    assert res["ok"] is True and res["license_preserved"] is True
+    assert db.get_setting("license_key", "") == my_key
+    licensing._reset_cache()
+    assert licensing.is_activated() is True
+
+
+def test_ui_restore_wipes_foreign_license_on_unlicensed_machine(
+        tmp_db_path, real_gate, owner_pin):
+    """Unlicensed machine + legacy foreign backup via the UI path: the
+    foreign license is wiped (not inherited) — machine stays unlicensed."""
+    assert licensing.is_activated() is False
+    name = _make_backup_dir("legacy_foreign", Path(db.DB_PATH), plant={
+        "license_key": mint(sid=FOREIGN_SID, no=63),
+    })
+    res = bills_router.restore_backup(
+        {"name": name, "manager_pin": owner_pin})
+    assert res["ok"] is True
+    assert res["license_preserved"] is False
+    assert db.get_setting("license_key", "") == ""
+    licensing._reset_cache()
+    assert licensing.is_activated() is False
+
+
+def test_ui_restore_rejects_bad_name(tmp_db_path, real_gate, owner_pin):
+    with pytest.raises(Exception):
+        bills_router.restore_backup(
+            {"name": "../evil", "manager_pin": owner_pin})
 
 
 if __name__ == "__main__":

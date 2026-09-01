@@ -1014,12 +1014,20 @@ def list_sales(date: str = "", limit: int = 50, offset: int = 0, page: int = 0, 
     with db.conn() as c:
         if date:
             total = c.execute("SELECT COUNT(*) AS n FROM sales WHERE date(created_at)=?", (date,)).fetchone()["n"]
+            # v8.19.1: clamp the page (last-page deletion / filter shrink)
+            if use_pagination:
+                page = db.clamp_page(page, total, page_size)
+                offset = (page - 1) * page_size
             rows = c.execute(
                 f"SELECT * FROM sales WHERE date(created_at)=? ORDER BY {order_clause} LIMIT ? OFFSET ?",
                 (date, limit, offset)
             ).fetchall()
         else:
             total = c.execute("SELECT COUNT(*) AS n FROM sales").fetchone()["n"]
+            # v8.19.1: clamp the page (last-page deletion / filter shrink)
+            if use_pagination:
+                page = db.clamp_page(page, total, page_size)
+                offset = (page - 1) * page_size
             rows = c.execute(
                 f"SELECT * FROM sales ORDER BY {order_clause} LIMIT ? OFFSET ?", (limit, offset)
             ).fetchall()
@@ -1213,9 +1221,25 @@ def _reverse_sale_core(sale_id: int, c, reason: str = ""):
         )
 
     # Reverse stock state
+    # v8.19.1: sales imported from the Ezi POS never decremented stock for
+    # BAG categories (bag stock tracks "qty sold" instead — see
+    # profit_engine.sync_bags_stock_to_sold). Reversing those here would
+    # double-bump the stock, so skip bag lines for imported sales only;
+    # built-in POS bag sales DID decrement and still reverse normally.
+    skip_bag_lines = set()
+    try:
+        if c.execute(
+            "SELECT 1 FROM ezi_pos_imports WHERE sale_id=? LIMIT 1", (sale_id,)
+        ).fetchone():
+            from ..profit_engine import bag_category_ids as _bag_cat_ids
+            skip_bag_lines = _bag_cat_ids(c)
+    except Exception:
+        skip_bag_lines = set()
     reversed_stock_lines = 0
     for si in sale_items:
         if si["category_id"] and si["qty"] and si["qty"] > 0:
+            if si["category_id"] in skip_bag_lines:
+                continue
             try:
                 cogs_value = None
                 if si["cost_price"] and si["cost_price"] > 0:

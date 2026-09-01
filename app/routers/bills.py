@@ -855,6 +855,9 @@ def items_bills_list(q: str = "", start: str = "", end: str = "",
             params,
         ).fetchone()["n"]
 
+        # v8.19.1: clamp the page (last-page deletion / filter shrink)
+        page = db.clamp_page(page, total, page_size)
+
         # Fetch bill headers + aggregates in one query (using a subquery for aggregates)
         rows = c.execute(
             f"SELECT b.id, b.supplier_name, b.phone, b.bill_date, b.bill_no, "
@@ -932,6 +935,8 @@ def search_items(q: str, page: int = 1, page_size: int = 25) -> Any:
         total = c.execute(
             f"SELECT COUNT(*) AS n {base_where}", (pattern, pattern)
         ).fetchone()["n"]
+        # v8.19.1: clamp the page (last-page deletion / filter shrink)
+        page = db.clamp_page(page, total, page_size)
         rows = c.execute(
             f"SELECT {select_cols} {base_where} ORDER BY b.bill_date DESC, bi.id LIMIT ? OFFSET ?",
             (pattern, pattern, page_size, (page - 1) * page_size)
@@ -1021,6 +1026,9 @@ def list_bills(status: str = "", q: str = "", payment: str = "",
     count_sql = sql.replace("SELECT *", "SELECT COUNT(*) AS n", 1)
     with db.conn() as c:
         total = c.execute(count_sql, args).fetchone()["n"]
+        # v8.19.1: serve the nearest valid page when the requested one no
+        # longer exists (last-page deletion, filter shrinking the result set)
+        page = db.clamp_page(page, total, page_size)
         sql += f" ORDER BY {order_clause} LIMIT ? OFFSET ?"
         args += [page_size, (page - 1) * page_size]
         rows = [dict(r) for r in c.execute(sql, args).fetchall()]
@@ -1759,11 +1767,17 @@ def list_activity(limit: int = 20, event_type: str = "", entity_type: str = "",
     # Count total for pagination
     count_sql = sql.replace("SELECT *", "SELECT COUNT(*) AS n", 1)
 
-    sql += " ORDER BY COALESCE(bill_date, date(created_at)) DESC, id DESC LIMIT ? OFFSET ?"
-    args += [page_size, offset]
-
     with db.conn() as c:
-        total = c.execute(count_sql, args[:-2]).fetchone()["n"]
+        total = c.execute(count_sql, args).fetchone()["n"]
+        # v8.19.1: clamp the page BEFORE baking the OFFSET into the query
+        if use_pagination:
+            page = db.clamp_page(page, total, page_size)
+            offset = (page - 1) * page_size
+        # v8.19.1 fix (pre-existing bug): the ORDER BY referenced bill_date,
+        # which does not exist on activity_log — every paginated /api/activity
+        # call failed with "no such column: bill_date".
+        sql += " ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
+        args += [page_size, offset]
         rows = c.execute(sql, args).fetchall()
 
     import json as _json
@@ -2144,6 +2158,15 @@ def restore_backup(payload: dict) -> Any:
     if not ok:
         raise HTTPException(400, f"Backup database is corrupt: {msg}")
 
+    # v8.19.1: snapshot THIS machine's license so the restore can't wipe or
+    # replace it. The UI's Settings → Backups → Restore flow goes through
+    # THIS endpoint (not /api/maintenance/restore), so without this a backup
+    # made on a different PC would strip the local license and force the
+    # user to re-activate. Same policy as maintenance.restore_backup:
+    # the license NEVER travels with a restore.
+    from .. import licensing as _licensing
+    saved_license = _licensing.local_license_settings()
+
     # SAFETY: Create a fresh safety backup of the current DB
     safety_dir = BACKUPS / f"pre_restore_safety_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     safety_dir.mkdir(parents=True, exist_ok=True)
@@ -2190,19 +2213,28 @@ def restore_backup(payload: dict) -> Any:
             pass
         raise HTTPException(500, f"Restore failed (rolled back to safety backup): {e}")
 
+    # Re-apply this machine's own license over whatever the backup carried.
+    # Delete-first inside reapply: a legacy backup's foreign license rows are
+    # wiped, then the local snapshot (if any) is written back verbatim —
+    # licensed machines stay licensed, unlicensed machines stay unlicensed.
+    license_reapplied = _licensing.reapply_license_settings(saved_license)
+
     size_mb = round(
         sum(f.stat().st_size for f in backup_dir.rglob("*") if f.is_file()) / 1e6, 2)
     db.log_activity(
         "backup_restored", "backup", None,
         f"Restored backup '{backup_name}' ({size_mb} MB) by {mgr['name']}",
         {"backup_name": backup_name, "size_mb": size_mb,
-         "safety_backup": safety_dir.name},
+         "safety_backup": safety_dir.name,
+         "license_settings_reapplied": license_reapplied},
     )
     return {
         "ok": True,
         "restored_from": backup_name,
         "size_mb": size_mb,
         "safety_backup": safety_dir.name,
+        "license_preserved": bool(saved_license),
+        "license_settings_reapplied": license_reapplied,
         "message": "Restore successful. Please restart the server to apply all changes.",
     }
 

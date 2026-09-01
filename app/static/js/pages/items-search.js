@@ -10,6 +10,7 @@ import { initListState } from '../list-state.js';
 // multiple bills).
 import { route, navigate } from '../router.js';
 import { api } from '../api.js';
+import { pagination } from '../components/pagination.js';
 import { $, $$, esc, fmt, fmtRs, fmtDate, icon, iconHtml, debounce,
          skeletonRows, errorBox, emptyState } from '../utils.js';
 
@@ -68,6 +69,13 @@ route('/items', async (el, path, q) => {
   try {
     const data = await api(`/api/items/bills?q=${encodeURIComponent(curQ)}&page=${curPage}`);
 
+    // v8.19.1: backend clamps the page when the requested one no longer
+    // exists (bills deleted off the last page / search shrank the result) —
+    // follow it so the pager, URL and saved state show the page served.
+    if (data.page && Number(data.page) !== Number(curPage)) {
+      st.replace({ page: data.page });
+    }
+
     // Summary stats
     if (data.total > 0) {
       const totalCost = data.bills.reduce((s, b) => s + (b.total_cost || 0), 0);
@@ -124,10 +132,25 @@ route('/items', async (el, path, q) => {
           </tbody>
         </table>
       </div>
+      ${pagination(data, data.page || curPage, '/items', { q: curQ })}
       <div class="text-xs text-dim text-center mt-3">
-        ${data.total} bills found &middot; page ${data.page} of ${data.pages_total || 1}
-        ${data.pages_total > 1 ? `&middot; <a href="#/items?q=${encodeURIComponent(curQ)}&page=${data.page + 1}" class="link">Next →</a>` : ''}
+        ${data.total} bills found &middot; showing page ${data.page} of ${data.pages_total || 1}
       </div>`;
+
+    // v8.19.1: local refresh on pagination clicks — re-fetch and re-render
+    // just the results card instead of rebuilding the whole page shell.
+    $$('.pagination button:not([disabled])').forEach(btn => {
+      const originalOnclick = btn.getAttribute('onclick');
+      if (!originalOnclick) return;
+      btn.removeAttribute('onclick');
+      btn.onclick = (e) => {
+        e.preventDefault();
+        const match = originalOnclick.match(/page=(\d+)/);
+        const newPage = match ? parseInt(match[1]) : 1;
+        st.push({ page: newPage });
+        load();
+      };
+    });
 
     // Wire row click → toggle expand
     $$('.i-bill-row').forEach(row => {

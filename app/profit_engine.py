@@ -405,6 +405,75 @@ def _apply_adjustment_to_state(c, category_id, delta, txn_at=None):
     return {"qty": new_qty, "value": round(new_value, 2), "avg": new_avg}
 
 
+# ─── Bags categories: stock tracks qty SOLD (v8.19.1) ───────────────────────
+#
+# BUSINESS RULE (user-defined): shopping-bag categories ("Bag Rs 10/20/30/…",
+# auto-created by the Ezi POS import, or any category named "Bag…"/"Bags" /
+# coded BAG…) do NOT have their purchase bills entered in BillBook — bags are
+# bought as EXPENSES. So the normal "stock = purchased − sold" model can only
+# ever go negative for bags. Instead, the bag category's stock qty is used as
+# a display of "bags sold":
+#
+#     on every POS import (and every stock-state rebuild):
+#         sold = total qty of non-refunded sale_items for the category
+#         if current_qty < sold:  current_qty = sold
+#         else:                   leave it alone  (never decreases)
+#
+# The guard is intentional: a manual stock adjustment (or a higher historical
+# value) is never clobbered downward — the number only ever rises to the
+# total-sold level.
+
+def bag_category_ids(c) -> set:
+    """Active price_categories that are bag categories.
+
+    Matched by name ("Bag Rs 20", "Bags", …) or code ("BAG20", …) prefix —
+    the same convention the Ezi import uses when auto-creating them.
+    """
+    rows = c.execute(
+        "SELECT id FROM price_categories WHERE active=1 AND ("
+        "LOWER(TRIM(name)) LIKE 'bag%' OR UPPER(TRIM(COALESCE(code,''))) LIKE 'BAG%')"
+    ).fetchall()
+    return {r["id"] for r in rows}
+
+
+def sync_bags_stock_to_sold(c=None) -> list:
+    """Apply the bags rule (see block comment above) to EVERY active bag
+    category. Returns a list of {category_id, name, from_qty, to_qty} for the
+    categories that were raised; empty list when nothing needed changing.
+
+    Safe to call repeatedly (idempotent: once qty == sold it stops matching).
+    If `c` is provided, uses that connection and does NOT commit;
+    otherwise opens its own write_tx().
+    """
+    def _run(c):
+        changed = []
+        for cid in bag_category_ids(c):
+            sold = c.execute(
+                "SELECT COALESCE(SUM(si.qty), 0) AS s FROM sale_items si "
+                "JOIN sales s ON si.sale_id = s.id "
+                f"WHERE si.category_id=? AND si.qty > 0 AND {db.VALID_SALE_FILTER}",
+                (cid,),
+            ).fetchone()["s"]
+            st = _get_state(c, cid)
+            if st["qty"] < sold:
+                name_row = c.execute(
+                    "SELECT name FROM price_categories WHERE id=?", (cid,)
+                ).fetchone()
+                _save_state(c, cid, sold, round(sold * st["avg"], 2), st["avg"])
+                changed.append({
+                    "category_id": cid,
+                    "name": name_row["name"] if name_row else str(cid),
+                    "from_qty": round(st["qty"], 2),
+                    "to_qty": round(sold, 2),
+                })
+        return changed
+
+    if c is not None:
+        return _run(c)
+    with db.write_tx() as own_c:
+        return _run(own_c)
+
+
 # ─── Rebuild (recovery tool — NOT called from normal transactions) ──────────
 
 def rebuild_stock_state() -> dict:
@@ -510,6 +579,10 @@ def rebuild_stock_state() -> dict:
         for sale_item_id, new_cost in new_cost_prices.items():
             c.execute("UPDATE sale_items SET cost_price=? WHERE id=?", (new_cost, sale_item_id))
             rewrote_sales += 1
+        # v8.19.1: bags rule — bag purchases are EXPENSES (never entered as
+        # bills), so a pure replay leaves bag categories at −sold. Raise each
+        # bag category's qty to its total sold inside the same transaction.
+        bags_raised = sync_bags_stock_to_sold(c)
 
     categories = []
     for cid, pool in pools.items():
@@ -521,8 +594,10 @@ def rebuild_stock_state() -> dict:
                       "avg_cost": round(pool["avg"], 2)},
         })
     log_activity("rebuild_stock_state", "inventory", None,
-                 f"Rebuilt stock state: {len(categories)} categories, rewrote {rewrote_sales} sale_items",
-                 {"categories": len(categories), "rewrote_sales": rewrote_sales})
+                 f"Rebuilt stock state: {len(categories)} categories, rewrote {rewrote_sales} sale_items"
+                 + (f", raised {len(bags_raised)} bag category stock(s) to sold" if bags_raised else ""),
+                 {"categories": len(categories), "rewrote_sales": rewrote_sales,
+                  "bags_raised": bags_raised})
     # PR 8: record last-rebuilt timestamp + clear dirty flag.
     # Both writes are safe to skip if they fail — the rebuild itself already
     # committed via the conn() above; these are just metadata for /api/health.
@@ -543,7 +618,8 @@ def rebuild_stock_state() -> dict:
             )
     except Exception:
         pass  # don't fail the rebuild over a metadata write
-    return {"categories": categories, "rewrote_sales": rewrote_sales}
+    return {"categories": categories, "rewrote_sales": rewrote_sales,
+            "bags_raised": bags_raised}
 
 
 # ─── Read-only helpers ──────────────────────────────────────────────────────

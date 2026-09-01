@@ -793,8 +793,16 @@ route('/reports/peak-hours', async (el, path, q) => {
 // MONTHLY CLOSE — snapshot + PDF download
 // ═══════════════════════════════════════════════════
 route('/reports/monthly-close', async (el) => {
+  // v8.18.9 FIX ("no data showing"): this page always showed zeros —
+  // it read fields the backend never returned (sales_count,
+  // total_revenue, total_profit, bills_count, details). The API now
+  // returns a real month snapshot (sales + bills + expenses + profit)
+  // and this page reads those actual fields.
+  // Also fixed: the default month was computed in UTC (toISOString) —
+  // in Pakistan (UTC+5) that picked the WRONG month on the 1st (00:00
+  // –05:00) and last day (after 19:00). Now uses local time.
   const now = new Date();
-  const thisMonth = now.toISOString().slice(0, 7);
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
   el.innerHTML = `
     <div class="pos-page-header">
@@ -819,29 +827,126 @@ route('/reports/monthly-close', async (el) => {
   $('#mc-month').onchange = loadReport;
   $('#mc-pdf-btn').onclick = () => {
     const monthVal = $('#mc-month').value;
+    if (!monthVal) { toast('Pick a month first', 'warning'); return; }
     const [y, m] = monthVal.split('-');
     window.open(`/api/reports/monthly-close.pdf?year=${y}&month=${parseInt(m)}`, '_blank');
   };
   await loadReport();
 
+  function detailRows(details) {
+    // Backend convention: numbers = money (Rs), strings = plain labels.
+    return Object.entries(details).map(([k, v]) =>
+      `<div class="stat-row"><span>${esc(k.replace(/_/g, ' '))}</span><span>${
+        typeof v === 'number' ? fmtRs(v) : esc(String(v))}</span></div>`).join('');
+  }
+
   async function loadReport() {
     const monthVal = $('#mc-month').value;
+    if (!monthVal) {
+      $('#mc-out').innerHTML = errorBox('Pick a month to load the close snapshot.');
+      return;
+    }
     const [year, month] = monthVal.split('-').map(Number);
     try {
       const r = await api(`/api/reports/monthly-close?year=${year}&month=${month}`);
+
+      // Fallbacks keep the page alive against old field names.
+      const salesCount = r.sales_count ?? 0;
+      const revenue = r.total_revenue ?? 0;
+      const netProfit = r.net_profit ?? r.total_profit ?? 0;
+      const billsCount = r.bills_count ?? r.total_bills ?? 0;
+      const grossProfit = r.gross_profit ?? 0;
+      const opExp = r.operating_expenses ?? 0;
+
+      const hasData = (salesCount + billsCount + (r.refunded_sales_count || 0)) > 0
+        || revenue > 0 || (r.total_spent || 0) > 0 || opExp > 0;
+
+      if (!hasData) {
+        $('#mc-out').innerHTML = emptyState(
+          `Nothing recorded for ${esc(monthVal)}`,
+          'No sales, purchase bills, or expenses exist for this month. Pick a different month above.');
+        return;
+      }
+
+      const salesByCat = r.sales_by_category || [];
+      const audit = (r.audit && !r.audit.error)
+        ? `<div class="stat-row"><span>Month-End Audit</span><span>${fmt(r.audit.findings_count)} findings (${
+            fmt(r.audit.critical_count)} critical / ${fmt(r.audit.warning_count)} warnings)</span></div>`
+        : '';
+
       $('#mc-out').innerHTML = `
         <div class="grid grid-4 mb-4">
-          ${statCard('Total Sales', r.sales_count || 0, 'chip-primary', SVG.bills)}
-          ${statCard('Revenue', fmtRs(r.total_revenue || 0), 'chip-success', SVG.wallet)}
-          ${statCard('Total Profit', fmtRs(r.total_profit || 0), 'chip-info', SVG.trendUp)}
-          ${statCard('Bills Processed', r.bills_count || 0, 'chip-warning', SVG.file)}
+          ${statCard('POS Sales', fmt(salesCount), 'chip-primary', SVG.bills)}
+          ${statCard('Revenue', fmtRs(revenue), 'chip-success', SVG.wallet,
+                     `Credit sales: ${fmtRs(r.sales_credit_total || 0)}`)}
+          ${statCard('Net Profit', fmtRs(netProfit), netProfit >= 0 ? 'chip-success' : 'chip-danger', SVG.trendUp,
+                     `Gross: ${fmtRs(grossProfit)} − Op Ex: ${fmtRs(opExp)}`)}
+          ${statCard('Bills Processed', fmt(billsCount), 'chip-warning', SVG.file,
+                     `Purchases: ${fmtRs(r.total_spent || 0)}`)}
         </div>
-        <div class="card">
-          <h3>Snapshot for ${esc(monthVal)}</h3>
-          <div class="stat-list mt-3">
-            ${r.details ? Object.entries(r.details).map(([k, v]) => `<div class="stat-row"><span>${esc(k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()))}</span><span>${typeof v === 'number' ? fmtRs(v) : esc(String(v))}</span></div>`).join('') : '<p class="text-dim text-sm">No details available.</p>'}
+        <div class="grid grid-2 mb-4">
+          <div class="card">
+            <h3>Sales &amp; Profit — ${esc(monthVal)}</h3>
+            <div class="stat-list mt-3">
+              ${detailRows({
+                'POS Sales (invoices)': String(salesCount),
+                'Sales Revenue (net)': revenue,
+                'Discounts Given': r.discounts_given || 0,
+                'Sales on Credit (udhaar)': r.sales_credit_total || 0,
+                'Refunded Sales': `${fmt(r.refunded_sales_count || 0)} / ${fmtRs(r.refunded_total || 0)}`,
+                'Cost of Goods Sold': r.cost_of_goods ?? 0,
+                'Gross Profit': grossProfit,
+                'Operating Expenses': opExp,
+                'Net Profit': netProfit,
+                'Owner Draws (not expense)': r.owner_draws || 0,
+              })}
+              ${audit}
+            </div>
           </div>
-        </div>`;
+          <div class="card">
+            <h3>Purchases (Bills) — ${esc(monthVal)}</h3>
+            <div class="stat-list mt-3">
+              ${detailRows({
+                'Purchase Bills': String(billsCount),
+                'Purchases Total': r.total_spent || 0,
+                'Paid to Suppliers': r.total_paid || 0,
+                'Credit from Suppliers': r.total_credit || 0,
+                'Suppliers This Month': String(r.supplier_count || 0),
+              })}
+            </div>
+            ${(r.suppliers || []).length ? `
+              <div style="margin-top:12px">
+                <p class="text-dim text-sm" style="margin:0 0 6px">Suppliers:</p>
+                <div style="display:flex;flex-wrap:wrap;gap:6px">
+                  ${(r.suppliers).map(s => `<span class="chip chip-secondary" style="font-size:12px">${esc(s)}</span>`).join('')}
+                </div>
+              </div>` : ''}
+          </div>
+        </div>
+        ${salesByCat.length ? `
+        <div class="card">
+          <h3>Sales by Category — ${esc(monthVal)}</h3>
+          <div class="table-wrap"><table class="table">
+            <thead><tr>
+              <th>Category</th><th class="table-num">Lines</th><th class="table-num">Qty Sold</th>
+              <th class="table-num">Revenue</th><th class="table-num">COGS</th>
+              <th class="table-num">Gross Profit</th>
+            </tr></thead>
+            <tbody>
+              ${salesByCat.map(c => {
+                const gp = (c.revenue || 0) - (c.cost || 0);
+                return `<tr>
+                  <td><strong>${esc(c.category || 'Uncategorized')}</strong></td>
+                  <td class="table-num">${fmt(c.line_count || 0)}</td>
+                  <td class="table-num">${fmt(c.qty_sold || 0)}</td>
+                  <td class="table-num">${fmtRs(c.revenue || 0)}</td>
+                  <td class="table-num">${fmtRs(c.cost || 0)}</td>
+                  <td class="table-num ${gp >= 0 ? 'text-success' : 'text-danger'}">${fmtRs(gp)}</td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table></div>
+        </div>` : ''}`;
     } catch (e) {
       $('#mc-out').innerHTML = errorBox(e.message);
     }

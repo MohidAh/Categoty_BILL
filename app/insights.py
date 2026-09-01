@@ -529,9 +529,24 @@ def recurring_reminders() -> list:
 
 # ---------- Monthly close ----------
 def monthly_close(year: int, month: int) -> dict:
-    """Snapshot all bills and items for a specific month for accounting closure."""
+    """Snapshot all bills and items for a specific month for accounting closure.
+
+    v8.18.9 FIX ("monthly close shows no data"): the UI page at
+    /reports/monthly-close read fields this function NEVER returned
+    (sales_count, total_revenue, total_profit, bills_count, details) —
+    so the page showed all zeros forever, even with a full database.
+    The snapshot now also covers the SELL side (POS sales, refunds,
+    COGS, expenses, profit) — an accounting closure needs more than
+    purchase bills. All pre-v8.18.9 keys are kept unchanged (the PDF
+    export and test_v8_2_phase6_fix rely on them); new keys are
+    additive.
+    """
     from .validate import pieces
     month_str = f"{year:04d}-{month:02d}"
+    # Same "valid sale" filter as get_pnl()/actual earnings: refunded
+    # sales are excluded from revenue/COGS (their reversal already
+    # happened), and 'partial' still counts.
+    valid_statuses = ("paid", "credit", "partial")
     with conn() as c:
         bills = c.execute(
             "SELECT * FROM bills WHERE deleted_at IS NULL AND status='confirmed' "
@@ -552,7 +567,58 @@ def monthly_close(year: int, month: int) -> dict:
                 d["supplier_name"] = b["supplier_name"]
                 d["bill_date"] = b["bill_date"]
                 items.append(d)
-    # Summary
+
+        # v8.18.9 — POS sales aggregate for the month (sell side)
+        sales_agg = c.execute(
+            "SELECT COUNT(*) AS n, COALESCE(SUM(total), 0) AS revenue, "
+            "COALESCE(SUM(discount), 0) AS discounts, "
+            "COALESCE(SUM(loyalty_discount), 0) AS loyalty_discounts "
+            f"FROM sales WHERE strftime('%Y-%m', created_at)=? AND payment_status IN {valid_statuses}",
+            (month_str,)
+        ).fetchone()
+        refunds_agg = c.execute(
+            "SELECT COUNT(*) AS n, COALESCE(SUM(total), 0) AS total "
+            "FROM sales WHERE strftime('%Y-%m', created_at)=? "
+            "AND payment_status='refunded'",
+            (month_str,)
+        ).fetchone()
+        credit_sales = c.execute(
+            "SELECT COALESCE(SUM(total), 0) AS total "
+            "FROM sales WHERE strftime('%Y-%m', created_at)=? "
+            "AND payment_status IN ('credit','partial')",
+            (month_str,)
+        ).fetchone()
+        cogs_agg = c.execute(
+            "SELECT COALESCE(SUM(si.cost_price * si.qty), 0) AS cost "
+            "FROM sale_items si JOIN sales s ON si.sale_id = s.id "
+            f"WHERE strftime('%Y-%m', s.created_at)=? AND s.payment_status IN {valid_statuses}",
+            (month_str,)
+        ).fetchone()
+        sales_by_cat = c.execute(
+            "SELECT COALESCE(pc.name, si.category_code, 'Uncategorized') AS category, "
+            "COUNT(*) AS line_count, COALESCE(SUM(si.qty), 0) AS qty_sold, "
+            "COALESCE(SUM(si.line_total), 0) AS revenue, "
+            "COALESCE(SUM(si.cost_price * si.qty), 0) AS cost "
+            "FROM sale_items si JOIN sales s ON si.sale_id = s.id "
+            "LEFT JOIN price_categories pc ON si.category_id = pc.id "
+            f"WHERE strftime('%Y-%m', s.created_at)=? AND s.payment_status IN {valid_statuses} "
+            "GROUP BY category ORDER BY revenue DESC",
+            (month_str,)
+        ).fetchall()
+        # v8.18.9 — expenses for the month. Operating expenses hit the
+        # profit; owner draws are equity reductions and stay separate
+        # (same rule as get_pnl). expense_type exists since v4.0 with a
+        # migration backfilling 'operating' (db.py).
+        exp_agg = c.execute(
+            "SELECT COALESCE(SUM(CASE WHEN COALESCE(expense_type,'operating')='owner_draw' "
+            "THEN 0 ELSE amount END), 0) AS operating, "
+            "COALESCE(SUM(CASE WHEN COALESCE(expense_type,'operating')='owner_draw' "
+            "THEN amount ELSE 0 END), 0) AS owner_draws "
+            "FROM expenses WHERE strftime('%Y-%m', date)=?",
+            (month_str,)
+        ).fetchone()
+
+    # Summary — bills (buy side, unchanged)
     total_spent = sum(b["written_total"] or b["computed_total"] or 0 for b in bills)
     total_credit = sum(
         (b["written_total"] or b["computed_total"] or 0)
@@ -574,9 +640,59 @@ def monthly_close(year: int, month: int) -> dict:
         by_cat[cat]["cost"] += it["line_total"] or 0
         by_cat[cat]["revenue"] += sell * p
         by_cat[cat]["items"] += 1
+
+    # Summary — sales (sell side, v8.18.9)
+    sales_count = sales_agg["n"] or 0
+    total_revenue = round(sales_agg["revenue"] or 0, 2)
+    total_cogs = round(cogs_agg["cost"] or 0, 2)
+    gross_profit = round(total_revenue - total_cogs, 2)
+    operating_expenses = round(exp_agg["operating"] or 0, 2)
+    owner_draws = round(exp_agg["owner_draws"] or 0, 2)
+    net_profit = round(gross_profit - operating_expenses, 2)
+    refunded_count = refunds_agg["n"] or 0
+    refunded_total = round(refunds_agg["total"] or 0, 2)
+    credit_sales_total = round(credit_sales["total"] or 0, 2)
+
+    # v8.18.9 — the flat key→value list the UI's "Snapshot" card renders.
+    # Convention: NUMBERS are money (UI renders them as Rs), STRINGS are
+    # counts/labels (rendered verbatim).
+    details = {
+        "POS Sales (invoices)": str(sales_count),
+        "Sales Revenue (net of discounts)": total_revenue,
+        "Sales on Credit (udhaar)": credit_sales_total,
+        "Refunded Sales (count / amount)": f"{refunded_count} / Rs {refunded_total:,.0f}",
+        "Cost of Goods Sold": total_cogs,
+        "Gross Profit (revenue − COGS)": gross_profit,
+        "Operating Expenses": operating_expenses,
+        "Net Profit (gross − op. expenses)": net_profit,
+        "Owner Draws (equity, not expense)": owner_draws,
+        "Purchase Bills (count)": str(len(bills)),
+        "Purchases Total (bills)": round(total_spent, 2),
+        "Paid to Suppliers": round(total_paid, 2),
+        "Credit from Suppliers": round(total_credit, 2),
+        "Suppliers This Month": str(len(suppliers)),
+    }
+
     return {
         "month": month_str,
+        # --- sell side (v8.18.9, new) ---
+        "sales_count": sales_count,
+        "total_revenue": total_revenue,
+        "discounts_given": round(sales_agg["discounts"] or 0, 2),
+        "loyalty_discounts": round(sales_agg["loyalty_discounts"] or 0, 2),
+        "refunded_sales_count": refunded_count,
+        "refunded_total": refunded_total,
+        "sales_credit_total": credit_sales_total,
+        "cost_of_goods": total_cogs,
+        "gross_profit": gross_profit,
+        "operating_expenses": operating_expenses,
+        "owner_draws": owner_draws,
+        "net_profit": net_profit,
+        "total_profit": net_profit,  # alias the old UI expected
+        "sales_by_category": [dict(r) for r in sales_by_cat],
+        # --- buy side (pre-v8.18.9 keys, unchanged) ---
         "total_bills": len(bills),
+        "bills_count": len(bills),  # alias the old UI expected
         "total_spent": round(total_spent, 2),
         "total_paid": round(total_paid, 2),
         "total_credit": round(total_credit, 2),
@@ -585,6 +701,8 @@ def monthly_close(year: int, month: int) -> dict:
         "items": items,
         "by_category": dict(by_cat),
         "bills": [dict(b) for b in bills],
+        # --- UI snapshot list (v8.18.9) ---
+        "details": details,
     }
 
 

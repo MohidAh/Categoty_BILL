@@ -87,7 +87,9 @@ def detect_duplicate(supplier_name: str, phone: str, bill_date: str, exclude_id=
     if not (supplier_name or phone) or not bill_date:
         return None
     with conn() as c:
-        sql = "SELECT id, supplier_name, bill_date, written_total FROM bills WHERE bill_date=?"
+        # v8.18.15: deleted_at IS NULL — a deleted bill must not trip the
+        # duplicate warning when the same supplier bill is re-entered
+        sql = "SELECT id, supplier_name, bill_date, written_total FROM bills WHERE deleted_at IS NULL AND bill_date=?"
         args = [bill_date]
         if phone:
             sql += " AND phone=?"

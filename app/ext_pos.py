@@ -191,7 +191,8 @@ def get_cash_flow_forecast() -> dict:
         for r in recurring:
             if int(r["day_of_month"]) == d.day: outflow += float(r["amount"] or 0)
         with conn() as c:
-            bills_due = c.execute("SELECT COALESCE(SUM(COALESCE(written_total, computed_total)), 0) AS v FROM bills WHERE status='confirmed' AND payment_status='credit' AND date(credit_due_date)=?", (date_str,)).fetchone()["v"]
+            # v8.18.15: deleted_at IS NULL — deleted bills have no future dues
+            bills_due = c.execute("SELECT COALESCE(SUM(COALESCE(written_total, computed_total)), 0) AS v FROM bills WHERE status='confirmed' AND deleted_at IS NULL AND payment_status='credit' AND date(credit_due_date)=?", (date_str,)).fetchone()["v"]
             is_closed = c.execute("SELECT COUNT(*) n FROM closed_days WHERE date=?", (date_str,)).fetchone()["n"]
         outflow += float(bills_due or 0)
         if is_closed: inflow = 0

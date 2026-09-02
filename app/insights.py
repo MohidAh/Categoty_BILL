@@ -234,9 +234,11 @@ def active_alerts() -> dict:
             })
 
         # Warning: credit overdue > 30 days
+        # v8.18.15: deleted_at IS NULL — soft-deleted bills must not alert
         overdue30 = c.execute(
             "SELECT id, supplier_name, written_total FROM bills "
             "WHERE payment_status='credit' AND status='confirmed' "
+            "AND deleted_at IS NULL "
             "AND credit_due_date IS NOT NULL "
             "AND date(credit_due_date) < date('now','-30 days') "
             "AND date(credit_due_date) >= date('now','-60 days')"

@@ -1263,12 +1263,23 @@ def confirm(bill_id: int, payload: ConfirmIn) -> Any:
 # ─── v8.14.0: confirm() helpers — each handles one step, accepts shared connection c ──
 
 def _confirm_check_and_increment(c, bill_id: int) -> tuple:
-    """Step 1+2: SELECT bill + OCC version increment. Returns (bill_row, was_confirmed, expected_version)."""
+    """Step 1+2: SELECT bill + OCC version increment. Returns (bill_row, was_confirmed, expected_version).
+
+    v8.18.15: soft-deleted bills are rejected here — confirming a deleted
+    bill would apply stock for a bill every report/rebuild excludes, silently
+    inflating category_stock_state.
+    """
     bill_row = c.execute(
-        "SELECT status, version FROM bills WHERE id=?", (bill_id,)
+        "SELECT status, version, deleted_at FROM bills WHERE id=?", (bill_id,)
     ).fetchone()
     if not bill_row:
         raise HTTPException(404, "bill not found")
+    if bill_row["deleted_at"] is not None:
+        raise HTTPException(409, {
+            "error": "bill_deleted",
+            "message": "This bill was deleted. Restore it before confirming.",
+            "bill_id": bill_id,
+        })
     was_confirmed = (bill_row["status"] == 'confirmed')
     expected_version = bill_row["version"]
     cur = c.execute(
@@ -1473,52 +1484,158 @@ def delete_bill(bill_id: int, permanent: bool = False) -> Any:
 
     Soft-deleted bills are excluded from list/get queries but can be restored
     within a 5-minute window via the undo toast in the UI.
+
+    v8.18.15: deleting a CONFIRMED bill now REVERSES its stock effect
+    (category_stock_state) inside the same atomic transaction, so the
+    inventory page and every stock-derived number reflect the deletion
+    immediately — no restart / rebuild needed. Previously the running state
+    kept the deleted bill's qty+value until the next full rebuild_stock_state
+    (which only ran at boot), which is exactly the "changes don't show until
+    I restart the app" bug. restore_bill() re-applies the purchase, keeping
+    the 5-minute undo perfectly symmetric.
     """
-    # Fetch supplier name before deleting for the activity log
     sup_name = ""
-    with db.conn() as c:
-        row = c.execute("SELECT supplier_name FROM bills WHERE id=?", (bill_id,)).fetchone()
-        if row:
-            sup_name = row["supplier_name"] or "Unknown"
+    reversed_stock_lines = 0
+    with db.write_tx() as c:
+        row = c.execute(
+            "SELECT supplier_name, status, deleted_at FROM bills WHERE id=?",
+            (bill_id,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "bill not found")
+        sup_name = row["supplier_name"] or "Unknown"
+        already_deleted = row["deleted_at"] is not None
+        # Reverse stock exactly ONCE — only when a live (not-yet-deleted)
+        # CONFIRMED bill transitions to deleted. Hard-deleting an already
+        # soft-deleted bill must NOT reverse again (it was reversed at
+        # soft-delete time). Review bills never touched stock.
+        if not already_deleted and row["status"] == "confirmed":
+            reversed_stock_lines = _reverse_bill_stock(c, bill_id)
         if permanent:
             pages = c.execute(
                 "SELECT filename FROM bill_pages WHERE bill_id=?", (bill_id,)
             ).fetchall()
+            # bill_items removed via FK ON DELETE CASCADE (foreign_keys=ON)
             c.execute("DELETE FROM bills WHERE id=?", (bill_id,))
             for p in pages:
                 try:
                     (PAGES / p["filename"]).unlink(missing_ok=True)
                 except Exception as _e:
                     logger.warning("Silent exception in bills.py: %s", _e, exc_info=True)
-        else:
+        elif not already_deleted:
             from datetime import datetime
             c.execute(
                 "UPDATE bills SET deleted_at=? WHERE id=?",
                 (datetime.now().isoformat(), bill_id),
             )
+        else:
+            # Idempotent: soft-deleting an already soft-deleted bill is a no-op
+            return {"ok": True, "soft_deleted": True, "idempotent": True,
+                    "reversed_stock_lines": 0}
     db.log_activity(
         "bill_deleted", "bill", bill_id,
         f"Deleted bill #{bill_id} ({sup_name})" + (" permanently" if permanent else ""),
-        {"supplier": sup_name, "permanent": permanent},
+        {"supplier": sup_name, "permanent": permanent,
+         "reversed_stock_lines": reversed_stock_lines},
     )
-    return {"ok": True, "soft_deleted": not permanent}
+    return {"ok": True, "soft_deleted": not permanent,
+            "reversed_stock_lines": reversed_stock_lines}
+
+
+def _reverse_bill_stock(c, bill_id: int) -> int:
+    """v8.18.15: reverse a confirmed bill's stock contribution.
+
+    Mirrors _confirm_reverse_old_purchases: uses each bill_item's ORIGINAL
+    price (NOT current avg cost) and pieces-qty (dozen → ×12), skips lines
+    without category/price/qty, and logs state drift instead of failing the
+    delete. Must run inside the caller's write_tx — never commits itself.
+    """
+    items = c.execute(
+        "SELECT category_id, price, qty, unit FROM bill_items WHERE bill_id=?",
+        (bill_id,),
+    ).fetchall()
+    reversed_lines = 0
+    for it in items:
+        if it["category_id"] and it["price"] and it["price"] > 0 \
+                and it["qty"] and it["qty"] > 0:
+            qty = pieces(it["qty"], it["unit"])
+            unit_price = float(it["price"])
+            try:
+                profit_mod.reverse_purchase_in_state(
+                    it["category_id"], qty, unit_price, c=c,
+                )
+                reversed_lines += 1
+            except Exception as e:
+                profit_mod.log_state_drift(
+                    "reverse_purchase_in_state", it["category_id"], str(e),
+                    {"bill_id": bill_id, "qty": qty, "unit_price": unit_price},
+                    c=c,
+                )
+    return reversed_lines
+
+
+def _reapply_bill_stock(c, bill_id: int) -> int:
+    """v8.18.15: re-apply a confirmed bill's stock contribution (undo path).
+
+    Exact mirror of _reverse_bill_stock: same items, same ORIGINAL prices —
+    so soft-delete → restore returns the running state to exactly what it
+    was. Must run inside the caller's write_tx — never commits itself.
+    """
+    items = c.execute(
+        "SELECT category_id, price, qty, unit FROM bill_items WHERE bill_id=?",
+        (bill_id,),
+    ).fetchall()
+    applied_lines = 0
+    for it in items:
+        if it["category_id"] and it["price"] and it["price"] > 0 \
+                and it["qty"] and it["qty"] > 0:
+            qty = pieces(it["qty"], it["unit"])
+            unit_price = float(it["price"])
+            try:
+                profit_mod.apply_purchase_to_state(
+                    it["category_id"], qty, unit_price, c=c,
+                )
+                applied_lines += 1
+            except Exception as e:
+                profit_mod.log_state_drift(
+                    "apply_purchase_in_restore", it["category_id"], str(e),
+                    {"bill_id": bill_id, "qty": qty, "unit_price": unit_price},
+                    c=c,
+                )
+    return applied_lines
 
 
 
 
 @router.post("/api/bills/{bill_id}/restore")
 def restore_bill(bill_id: int) -> Any:
-    """Restore a soft-deleted bill (undo)."""
-    with db.conn() as c:
+    """Restore a soft-deleted bill (undo).
+
+    v8.18.15: restoring a CONFIRMED bill re-applies its stock effect —
+    symmetric with delete_bill()'s reversal — so the undo toast leaves
+    zero side effects on category_stock_state.
+    """
+    with db.write_tx() as c:
+        row = c.execute(
+            "SELECT status, deleted_at, supplier_name FROM bills WHERE id=?",
+            (bill_id,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "bill not found")
+        if not row["deleted_at"]:
+            # Idempotent: restoring a live bill is a no-op
+            return {"ok": True, "idempotent": True, "reapplied_stock_lines": 0}
+        reapplied_stock_lines = 0
+        if row["status"] == "confirmed":
+            reapplied_stock_lines = _reapply_bill_stock(c, bill_id)
         c.execute("UPDATE bills SET deleted_at=NULL WHERE id=?", (bill_id,))
-        row = c.execute("SELECT supplier_name FROM bills WHERE id=?", (bill_id,)).fetchone()
-        sup_name = row["supplier_name"] if row else "Unknown"
+        sup_name = row["supplier_name"] or "Unknown"
     db.log_activity(
         "bill_restored", "bill", bill_id,
         f"Restored bill #{bill_id} ({sup_name})",
-        {"supplier": sup_name},
+        {"supplier": sup_name, "reapplied_stock_lines": reapplied_stock_lines},
     )
-    return {"ok": True}
+    return {"ok": True, "reapplied_stock_lines": reapplied_stock_lines}
 
 
 

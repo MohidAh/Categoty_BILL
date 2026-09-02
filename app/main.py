@@ -181,11 +181,22 @@ class APIThrottleMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(APIThrottleMiddleware)
 
-# ─── No-cache middleware for static files ───
+# ─── No-cache middleware ───
+# v8.18.15: coverage extended from (static + / + /login) to ALL paths the
+# webview renders or fetches — /api/* and /pages/* included. API GET
+# responses previously carried NO Cache-Control header, so the Tauri
+# WebView (WebView2/WebKit HTTP cache) could serve stale report data after
+# bills/sales changed — the classic "reports only update after app restart"
+# symptom. no-store on /api/* guarantees every fetch re-validates against
+# the live backend (SQLite reads are always fresh — every request opens a
+# new connection).
 class NoCacheMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = await call_next(request)
-        if request.url.path.startswith("/static/") or request.url.path in ("/", "/login"):
+        path = request.url.path
+        if (path.startswith("/static/") or path.startswith("/api/")
+                or path.startswith("/pages/")
+                or path in ("/", "/login", "/favicon.ico")):
             response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
             response.headers["Pragma"] = "no-cache"
             response.headers["Expires"] = "0"

@@ -1,0 +1,1492 @@
+{
+ "visited": 87,
+ "summary": {
+  "pages_ok": 87,
+  "pages_with_http_failures": 0,
+  "pages_with_dead_reads": 0,
+  "pages_with_js_errors": 0,
+  "distinct_failing_endpoints": {},
+  "distinct_dead_reads": {}
+ },
+ "pages": [
+  {
+   "route": "/",
+   "files": [
+    "pages/dashboard.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 13,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 1418,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/barcodes",
+   "files": [
+    "pages/pos-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 3,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 276,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/bills",
+   "files": [
+    "pages/bills-list.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [
+    "Failed to load resource: the server responded with a status of 404 ()",
+    "Failed to load resource: the server responded with a status of 404 ()",
+    "Failed to load resource: the server responded with a status of 404 ()",
+    "Failed to load resource: the server responded with a status of 404 ()"
+   ],
+   "dom": {
+    "dom": "OK",
+    "text_len": 830,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/bills/",
+   "files": [
+    "pages/bill-edit.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 7,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 53,
+    "empty_state": "Bill not found\n\nNo bill id in the URL.\n\nBack to Bills",
+    "error_page": false
+   }
+  },
+  {
+   "route": "/bills/cash-buckets",
+   "files": [
+    "pages/cash-buckets-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 8,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 967,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/bills/expenses",
+   "files": [
+    "pages/expenses-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 5,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 633,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/bills/new",
+   "files": [
+    "pages/bill-new.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 3,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 574,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/bills/payments",
+   "files": [
+    "pages/billing-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 5,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 277,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/bills/review",
+   "files": [
+    "pages/billing-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 162,
+    "empty_state": "All caught up!\n\nNo bills waiting for review. Upload a new bill to get started.\n\nUpload Bill",
+    "error_page": false
+   }
+  },
+  {
+   "route": "/central-purchases",
+   "files": [
+    "pages/central-purchases-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 324,
+    "empty_state": "No central purchases yet\n\nRecord a bulk buy at Central Warehouse, then distribute it to branches. Br",
+    "error_page": false
+   }
+  },
+  {
+   "route": "/customers",
+   "files": [
+    "pages/customers-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 284,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/customers/",
+   "files": [
+    "apps/pos/components/customer-detail.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 7,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 46,
+    "empty_state": "Customer not found\n\nNo customer id in the URL.",
+    "error_page": false
+   }
+  },
+  {
+   "route": "/customers/credit",
+   "files": [
+    "pages/customers-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 279,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/customers/import",
+   "files": [
+    "pages/customers-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 3,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 580,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/customers/loyalty",
+   "files": [
+    "pages/customers-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 6,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 545,
+    "empty_state": "No redemptions yet\n\nCustomers can redeem loyalty points at checkout for a discount.",
+    "error_page": false
+   }
+  },
+  {
+   "route": "/dead-stock",
+   "files": [
+    "apps/pos/components/dead-stock.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 359,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/help",
+   "files": [
+    "pages/help-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 3,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 2866,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/import",
+   "files": [
+    "pages/more.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 3,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 449,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/insights",
+   "files": [
+    "pages/insights-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 0,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 438,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/insights/abc",
+   "files": [
+    "pages/insights-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 883,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/insights/agent",
+   "files": [
+    "pages/agent-chat-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 11,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 438,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/insights/ai-usage",
+   "files": [
+    "pages/ai-usage-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 9,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 924,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/insights/approval-queue",
+   "files": [
+    "pages/approval-queue-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 5,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 376,
+    "empty_state": "No pending actions\n\nWhen the AI drafts an action (purchase order, price change, expense, etc.), it w",
+    "error_page": false
+   }
+  },
+  {
+   "route": "/insights/forecast",
+   "files": [
+    "pages/insights-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 515,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/insights/hq-branches",
+   "files": [
+    "pages/hq-branches-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 306,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/insights/market-intel",
+   "files": [
+    "pages/insights-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 3,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 405,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/insights/owner-hub",
+   "files": [
+    "pages/owner-hub-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 318,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/insights/price-push",
+   "files": [
+    "pages/price-push-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 274,
+    "empty_state": "No price pushes yet\n\nPush a price update to all registered branches. Each branch applies it idempote",
+    "error_page": false
+   }
+  },
+  {
+   "route": "/insights/trends",
+   "files": [
+    "pages/insights-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 6,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 557,
+    "empty_state": "No trend alerts\n\nClick \"Refresh AI Analysis\" to generate fresh alerts.",
+    "error_page": false
+   }
+  },
+  {
+   "route": "/inventory/custom-items",
+   "files": [
+    "pages/inventory-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 5,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 379,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/items",
+   "files": [
+    "pages/items-search.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 759,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/launcher",
+   "files": [
+    "app.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 6,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 360,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/more",
+   "files": [
+    "pages/more.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 3,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 663,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/pos",
+   "files": [
+    "pages/pos.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 8,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 579,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/pos-import",
+   "files": [
+    "pages/pos-import-sync-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 1246,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/pos/cash-drawer",
+   "files": [
+    "pages/pos-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 233,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/pos/quotes",
+   "files": [
+    "apps/pos/components/quotes.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 3,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 187,
+    "empty_state": "No quotations yet\n\nSave a cart as a quote from the POS screen (F12).\n\nGo to POS",
+    "error_page": false
+   }
+  },
+  {
+   "route": "/pos/returns",
+   "files": [
+    "pages/pos-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 257,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/pos/sale/",
+   "files": [
+    "apps/pos/components/sale-detail.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 2,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 9,
+    "empty_state": "Not found",
+    "error_page": false
+   }
+  },
+  {
+   "route": "/pos/sales",
+   "files": [
+    "apps/pos/components/sales-history.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 3,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 144,
+    "empty_state": "No sales found\n\nTry a different date or page.",
+    "error_page": false
+   }
+  },
+  {
+   "route": "/pos/shifts",
+   "files": [
+    "pages/pos-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 5,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 198,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/pos/z-report",
+   "files": [
+    "pages/pos-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 329,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/purchase-orders",
+   "files": [
+    "pages/inventory-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 200,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/purchase-orders/",
+   "files": [
+    "pages/inventory-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 7,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 43,
+    "empty_state": "Not found\n\nNo purchase order id in the URL.",
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reorder",
+   "files": [
+    "pages/inventory-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 329,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports",
+   "files": [
+    "pages/reports-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 0,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 1670,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/audit",
+   "files": [
+    "pages/audit-report-page.js",
+    "pages/cash-controls-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 5,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 245,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/balance-sheet",
+   "files": [
+    "pages/reports-financial.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 390,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/billwise",
+   "files": [
+    "pages/reports-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 5,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 1212,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/cash-buckets",
+   "files": [
+    "pages/cash-buckets-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 0,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 977,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/cash-flow",
+   "files": [
+    "pages/reports-financial.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 5,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 329,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/daily-stock",
+   "files": [
+    "pages/daily-stock-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 457,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/earnings",
+   "files": [
+    "pages/actual-earnings-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 215,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/expenses",
+   "files": [
+    "pages/expenses-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 0,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 633,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/export",
+   "files": [
+    "pages/reports-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 602,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/margins",
+   "files": [
+    "pages/margins-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 1156,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/monthly-close",
+   "files": [
+    "pages/reports-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 221,
+    "empty_state": "Nothing recorded for 2026-09\n\nNo sales, purchase bills, or expenses exist for this month. Pick a dif",
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/monthly-profit",
+   "files": [
+    "pages/monthly-profit-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 3,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 205,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/overview",
+   "files": [
+    "pages/reports-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 8,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 575,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/peak-hours",
+   "files": [
+    "pages/reports-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 361,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/pnl",
+   "files": [
+    "pages/reports-financial.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 408,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/profit-analysis",
+   "files": [
+    "pages/reports-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 3,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 1605,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/sold-stock",
+   "files": [
+    "pages/reports-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 667,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/store-profit",
+   "files": [
+    "pages/store-profit-dashboard.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 10,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 1660,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/suspicious",
+   "files": [
+    "pages/cash-controls-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 195,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/targets",
+   "files": [
+    "pages/reports-financial.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 5,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 237,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/top-items",
+   "files": [
+    "pages/reports-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 372,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/reports/ytd",
+   "files": [
+    "pages/ytd-profit-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 494,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/settings",
+   "files": [
+    "pages/settings-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 6,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 591,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/settings/ai-automations",
+   "files": [
+    "pages/ai-automations-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 5,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 1882,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/settings/appearance",
+   "files": [
+    "pages/settings-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 6,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 1723,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/settings/backups",
+   "files": [
+    "pages/settings-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 6,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 259,
+    "empty_state": "No backups yet\n\nClick \"Backup Now\" to create your first backup, or \"Upload Backup\" to import one fro",
+    "error_page": false
+   }
+  },
+  {
+   "route": "/settings/branch",
+   "files": [
+    "pages/branch-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 1124,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/settings/employees",
+   "files": [
+    "pages/settings-staff.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 269,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/settings/security",
+   "files": [
+    "pages/settings-staff.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 744,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/settings/tax-sms",
+   "files": [
+    "pages/settings-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 5,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 518,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/stock",
+   "files": [
+    "pages/inventory-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 496,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/stock/adjustments",
+   "files": [
+    "pages/inventory-pages.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 273,
+    "empty_state": "No adjustments yet\n\nUse New Adjustment to add or remove stock for any category. All changes are logg",
+    "error_page": false
+   }
+  },
+  {
+   "route": "/suppliers",
+   "files": [
+    "pages/suppliers-list.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 141,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/suppliers/",
+   "files": [
+    "pages/supplier-detail.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 7,
+   "pageerrors": [],
+   "console_errors": [
+    "ReferenceError: emptyState is not defined\n    at http://127.0.0.1:8821/static/js/pages/supplier-detail.js:10:5\n    at render (http://127.0.0.1:8821/static/js/router.js:140:13)"
+   ],
+   "dom": {
+    "dom": "OK",
+    "text_len": 35,
+    "empty_state": "\u26a0\ufe0f\nError\n\nemptyState is not defined",
+    "error_page": false
+   }
+  },
+  {
+   "route": "/transfers/in",
+   "files": [
+    "pages/transfers-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 3,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 251,
+    "empty_state": "No transfers yet\n\nTransfer challans created by you or sent to you will appear here. Use the Transfer",
+    "error_page": false
+   }
+  },
+  {
+   "route": "/transfers/out",
+   "files": [
+    "pages/transfers-page.js"
+   ],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 6,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 278,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/bills/1",
+   "files": [],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 5,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 793,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/customers/1",
+   "files": [],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [
+    "ReferenceError: getTier is not defined\n    at http://127.0.0.1:8821/static/js/apps/pos/components/customer-detail.js:21:16\n    at async render (http://127.0.0.1:8821/static/js/router.js:140:7)"
+   ],
+   "dom": {
+    "dom": "OK",
+    "text_len": 32,
+    "empty_state": "\u26a0\ufe0f\nError\n\ngetTier is not defined",
+    "error_page": false
+   }
+  },
+  {
+   "route": "/suppliers/1",
+   "files": [],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 5,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 1155,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/pos/sale/1",
+   "files": [],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 2,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 383,
+    "empty_state": null,
+    "error_page": false
+   }
+  },
+  {
+   "route": "/purchase-orders/1",
+   "files": [],
+   "failures": [],
+   "dead_reads": [],
+   "n_calls": 4,
+   "pageerrors": [],
+   "console_errors": [],
+   "dom": {
+    "dom": "OK",
+    "text_len": 260,
+    "empty_state": null,
+    "error_page": false
+   }
+  }
+ ]
+}

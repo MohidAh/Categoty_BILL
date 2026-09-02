@@ -1691,6 +1691,21 @@ def get_pnl(month: str = "") -> dict:
             "AND strftime('%Y-%m', bill_date)=?",
             (month,),
         ).fetchone()
+        # v8.18.11: per-category breakdown for the P&L page — same shape as
+        # actual-earnings' expenses_by_category. The page previously read
+        # r.revenue / r.cogs / r.expenses_total / r.expenses[] — none of which
+        # this endpoint returned (expenses is a NUMBER), so the whole statement
+        # rendered zeros.
+        exp_rows = c.execute(
+            "SELECT COALESCE(ec.name, e.category) AS category, "
+            "SUM(e.amount) AS total "
+            "FROM expenses e "
+            "LEFT JOIN expense_categories ec ON e.category_id = ec.id "
+            "WHERE strftime('%Y-%m', e.date)=? AND e.expense_type='operating' "
+            "GROUP BY COALESCE(ec.name, e.category) "
+            "ORDER BY total DESC",
+            (month,),
+        ).fetchall()
 
     revenue = sales["revenue"] or 0
     discounts = sales["discounts"] or 0
@@ -1714,6 +1729,11 @@ def get_pnl(month: str = "") -> dict:
         "net_profit": round(net_profit, 2),
         "net_margin": round(net_profit / net_revenue, 2) if net_revenue > 0 else 0,
         "purchases": round(purchases["total"] or 0, 2),
+        # v8.18.11: additive — per-category operating expenses for the P&L page
+        "expenses_by_category": [
+            {"category": r["category"], "total": round(r["total"] or 0, 2)}
+            for r in exp_rows
+        ],
     }
 
 

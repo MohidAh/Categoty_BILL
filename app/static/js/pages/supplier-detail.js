@@ -5,6 +5,11 @@ import { $, toast, esc, fmt, fmtRs, fmtDate, icon, iconHtml, openModal, closeMod
 
 route('/suppliers/', async (el, path) => {
   const id = path.split('/').pop();
+  // v8.18.11: guard bare/invalid id — was firing /api/suppliers// + /statement 404s
+  if (!id || !/^\d+$/.test(id)) {
+    el.innerHTML = emptyState('Supplier not found', 'No supplier id in the URL.', '', '');
+    return;
+  }
   let s, statement;
   try {
     [s, statement] = await Promise.all([

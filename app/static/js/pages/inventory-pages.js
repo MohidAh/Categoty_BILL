@@ -475,6 +475,11 @@ route('/purchase-orders', async (el) => {
 // PO detail page (still inside inventory app shell)
 route('/purchase-orders/', async (el, path) => {
   const id = path.split('/').pop();
+  // v8.18.11: guard bare/invalid id instead of firing a pointless 422/404
+  if (!id || !/^\d+$/.test(id)) {
+    el.innerHTML = emptyState('Not found', 'No purchase order id in the URL.', '', '');
+    return;
+  }
   let po;
   try { po = await api(`/api/purchase-orders/${id}`); }
   catch {

@@ -52,34 +52,47 @@ route('/reports/pnl', async (el) => {
     const month = $('#pnl-month').value;
     try {
       const r = await api(`/api/reports/pnl?month=${month}`);
-      const netProfit = (r.revenue || 0) - (r.cogs || 0) - (r.expenses_total || 0);
-      const grossProfit = (r.revenue || 0) - (r.cogs || 0);
-      const grossMargin = r.revenue > 0 ? (grossProfit / r.revenue) * 100 : 0;
-      const netMargin = r.revenue > 0 ? (netProfit / r.revenue) * 100 : 0;
+      // v8.18.11 fix: this page read r.revenue / r.cogs / r.expenses_total —
+      // keys that NEVER existed (the API returns net_revenue / cost_of_goods /
+      // expenses) and treated `expenses` (a number) as an array, so the whole
+      // statement rendered Rs 0 everywhere. Rewritten to the real contract;
+      // per-category rows come from expenses_by_category, owner draws are
+      // shown separately (equity reduction, not an expense).
+      const revenue = r.net_revenue || 0;
+      const cogs = r.cost_of_goods || 0;
+      const expensesTotal = r.expenses || 0;
+      const ownerDraws = r.owner_draws || 0;
+      const grossProfit = r.gross_profit || 0;
+      const netProfit = r.net_profit || 0;
+      const grossMarginPct = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
+      const netMarginPct = revenue > 0 ? (netProfit / revenue) * 100 : 0;
+      const expRows = r.expenses_by_category || [];
 
       $('#pnl-out').innerHTML = `
         <div class="grid grid-4 mb-4">
-          ${statCard('Revenue', fmtRs(r.revenue), 'chip-success', SVG.trendUp)}
-          ${statCard('COGS', fmtRs(r.cogs), 'chip-warning', SVG.wallet)}
-          ${statCard('Gross Profit', fmtRs(grossProfit), 'chip-info', SVG.chart, `${grossMargin.toFixed(1)}% margin`)}
-          ${statCard('Net Profit', fmtRs(netProfit), netProfit >= 0 ? 'chip-success' : 'chip-danger', SVG.trendUp, `${netMargin.toFixed(1)}% margin`)}
+          ${statCard('Revenue', fmtRs(revenue), 'chip-success', SVG.trendUp)}
+          ${statCard('COGS', fmtRs(cogs), 'chip-warning', SVG.wallet)}
+          ${statCard('Gross Profit', fmtRs(grossProfit), 'chip-info', SVG.chart, `${grossMarginPct.toFixed(1)}% margin`)}
+          ${statCard('Net Profit', fmtRs(netProfit), netProfit >= 0 ? 'chip-success' : 'chip-danger', SVG.trendUp, `${netMarginPct.toFixed(1)}% margin`)}
         </div>
 
         <div class="grid grid-2">
           <div class="card">
             <h3>Income & COGS</h3>
             <div class="stat-list mt-3">
-              <div class="stat-row"><span>Sales Revenue</span><span class="text-success">${fmtRs(r.revenue)}</span></div>
+              <div class="stat-row"><span>Sales Revenue</span><span class="text-success">${fmtRs(revenue)}</span></div>
               <div class="stat-row"><span>Discounts Given</span><span class="text-warning">${fmtRs(r.discounts)}</span></div>
-              <div class="stat-row" style="border-top:2px solid var(--border)"><span class="font-bold">Cost of Goods Sold</span><span class="font-bold">${fmtRs(r.cogs)}</span></div>
+              <div class="stat-row" style="border-top:2px solid var(--border)"><span class="font-bold">Cost of Goods Sold</span><span class="font-bold">${fmtRs(cogs)}</span></div>
               <div class="stat-row"><span class="font-bold">Gross Profit</span><span class="font-bold text-success">${fmtRs(grossProfit)}</span></div>
+              <div class="stat-row"><span class="text-dim">Purchases (bills)</span><span class="text-dim">${fmtRs(r.purchases || 0)}</span></div>
             </div>
           </div>
           <div class="card">
             <h3>Operating Expenses</h3>
             <div class="stat-list mt-3">
-              ${(r.expenses || []).length ? r.expenses.map(e => `<div class="stat-row"><span>${esc(e.category)}</span><span>${fmtRs(e.total)}</span></div>`).join('') : '<p class="text-dim text-sm">No expenses recorded this month.</p>'}
-              <div class="stat-row" style="border-top:2px solid var(--border)"><span class="font-bold">Total Expenses</span><span class="font-bold text-danger">${fmtRs(r.expenses_total)}</span></div>
+              ${expRows.length ? expRows.map(e => `<div class="stat-row"><span>${esc(e.category)}</span><span>${fmtRs(e.total)}</span></div>`).join('') : '<p class="text-dim text-sm">No expenses recorded this month.</p>'}
+              ${ownerDraws > 0 ? `<div class="stat-row"><span class="text-dim">Owner Draws <span class="text-xs">(equity, not expense)</span></span><span class="text-dim">${fmtRs(ownerDraws)}</span></div>` : ''}
+              <div class="stat-row" style="border-top:2px solid var(--border)"><span class="font-bold">Total Expenses</span><span class="font-bold text-danger">${fmtRs(expensesTotal)}</span></div>
             </div>
           </div>
         </div>
@@ -87,7 +100,7 @@ route('/reports/pnl', async (el) => {
         <div class="card mt-4 text-center">
           <div class="kpi-label">Net Profit (${esc(month)})</div>
           <div style="font-size:36px;font-weight:800;color:${netProfit >= 0 ? 'var(--success-text)' : 'var(--danger-text)'}">${fmtRs(netProfit)}</div>
-          <div class="text-sm text-dim mt-1">${netMargin.toFixed(1)}% net margin</div>
+          <div class="text-sm text-dim mt-1">${netMarginPct.toFixed(1)}% net margin</div>
         </div>`;
     } catch (e) {
       $('#pnl-out').innerHTML = errorBox(e.message);

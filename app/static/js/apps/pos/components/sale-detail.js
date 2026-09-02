@@ -16,6 +16,11 @@ function paymentBadge(method) {
 
 route('/pos/sale/', async (el, path) => {
   const id = path.split('/').pop();
+  // v8.18.11: guard bare/invalid id instead of firing a pointless API call
+  if (!id || !/^\d+$/.test(id)) {
+    el.innerHTML = '<div class="empty-state"><h3>Not found</h3></div>';
+    return;
+  }
   let sale;
   try { sale = await api(`/api/sales/${id}`); }
   catch { el.innerHTML = '<div class="empty-state"><h3>Not found</h3></div>'; return; }

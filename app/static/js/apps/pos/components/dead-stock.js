@@ -54,11 +54,19 @@ route('/dead-stock', async (el) => {
         return;
       }
 
-      const totalValue = list.reduce((s, a) => s + (a.stock_value || 0), 0);
-      const totalUnits = list.reduce((s, a) => s + (a.stock || 0), 0);
+      // v8.18.11 fix: this page previously read 8 fields the API never
+      // returned (stock_value, stock, color, code, category_name, last_sold,
+      // days_idle, suggestion) — every stat showed 0 and every column was
+      // blank/'—' (same bug class as the monthly-close page). The API
+      // (/api/trends/dead-stock -> trends.generate_dead_stock_alerts)
+      // returns: item_name, last_purchased, days_since, total_qty,
+      // tied_capital, avg_cost, supplier, suggested_discount, action.
+      // The home dashboard already read this real contract correctly.
+      const totalValue = list.reduce((s, a) => s + (a.tied_capital || 0), 0);
+      const totalUnits = list.reduce((s, a) => s + (a.total_qty || 0), 0);
       $('#ds-stats').innerHTML = `
         <div class="grid grid-3">
-          ${statCard('Dead Categories', list.length, 'chip-danger', SVG.alert)}
+          ${statCard('Dead Items', list.length, 'chip-danger', SVG.alert)}
           ${statCard('Tied-up Units', fmt(totalUnits), 'chip-warning', SVG.box)}
           ${statCard('Capital Locked', fmtRs(totalValue), 'chip-danger', SVG.trendDown)}
         </div>`;
@@ -67,19 +75,21 @@ route('/dead-stock', async (el) => {
         <div class="table-wrap">
           <table>
             <thead><tr>
-              <th>Code</th><th>Category</th>
-              <th class="table-num">Stock</th><th class="table-num">Last Sold</th>
-              <th class="table-num">Days Idle</th><th class="table-num">Stock Value</th>
+              <th>Item</th><th>Supplier</th>
+              <th class="table-num">Qty</th><th class="table-num">Avg Cost</th>
+              <th class="table-num">Last Purchased</th><th class="table-num">Days Since</th>
+              <th class="table-num">Capital Locked</th>
               <th>Suggestion</th>
             </tr></thead>
             <tbody>${list.map(a => `<tr>
-              <td><span class="pos-cat-code" style="background:${esc(a.color || '#888')}">${esc(a.code || '—')}</span></td>
-              <td class="font-semibold">${esc(a.category_name || 'Category')}</td>
-              <td class="table-num font-semibold">${fmt(a.stock || 0)}</td>
-              <td class="text-sm">${a.last_sold ? fmtDate(a.last_sold) : 'Never'}</td>
-              <td class="table-num text-warning font-semibold">${fmt(a.days_idle || 0)}</td>
-              <td class="table-num">${fmtRs(a.stock_value || 0)}</td>
-              <td class="text-sm">${esc(a.suggestion || 'Run a clearance discount')}</td>
+              <td class="font-semibold">${esc(a.item_name || 'Item')}</td>
+              <td class="text-sm">${esc(a.supplier || '—')}</td>
+              <td class="table-num font-semibold">${fmt(a.total_qty || 0)}</td>
+              <td class="table-num">${fmtRs(a.avg_cost || 0)}</td>
+              <td class="text-sm">${a.last_purchased ? fmtDate(a.last_purchased) : '—'}</td>
+              <td class="table-num text-warning font-semibold">${fmt(a.days_since || 0)}</td>
+              <td class="table-num">${fmtRs(a.tied_capital || 0)}</td>
+              <td class="text-sm">${esc(a.suggested_discount || '')}${a.action ? ` — ${esc(a.action)}` : ''}</td>
             </tr>`).join('')}</tbody>
           </table>
         </div>`;

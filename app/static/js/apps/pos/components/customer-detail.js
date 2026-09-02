@@ -5,6 +5,11 @@ import { $, $$, esc, fmt, fmtRs, fmtDate, toast, openModal, closeModal, skeleton
 
 route('/customers/', async (el, path) => {
   const id = path.split('/').pop();
+  // v8.18.11: guard bare/invalid id instead of firing a pointless API call
+  if (!id || !/^\d+$/.test(id)) {
+    el.innerHTML = emptyState('Customer not found', 'No customer id in the URL.', '', '');
+    return;
+  }
   let cust;
   try {
     cust = await api(`/api/customers/${id}`);

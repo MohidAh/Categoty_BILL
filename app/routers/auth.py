@@ -640,8 +640,16 @@ def list_sessions() -> Any:
             "SELECT token, created_at, expires_at, role, employee_id "
             "FROM sessions WHERE expires_at > datetime('now','localtime') ORDER BY created_at DESC"
         ).fetchall()
-    # Mask tokens for security
-    return {"sessions": [{**dict(r), "token": r["token"][:8] + "..."} for r in rows]}
+    # Mask tokens for security.
+    # v8.18.11 fix: also return the explicit `token_prefix` (first 8 chars)
+    # that the Settings → Security page displays and passes to
+    # DELETE /api/sessions/{token_prefix}. The page previously read a key
+    # that never existed, so the token column showed "undefined..." and every
+    # Revoke button called /api/sessions/undefined.
+    return {"sessions": [
+        {**dict(r), "token": r["token"][:8] + "...", "token_prefix": r["token"][:8]}
+        for r in rows
+    ]}
 
 
 

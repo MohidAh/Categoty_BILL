@@ -184,7 +184,11 @@ let _profitValue = 0;
 async function _refreshProfitTicker() {
   try {
     const r = await api('/api/profit/dashboard');
-    const today = r.daily_summary || {};
+    // v8.18.11 fix: the API returns the day's numbers under `daily`
+    // (profit_analytics.get_store_profit_dashboard) — this ticker read
+    // `daily_summary`, a key that NEVER existed, so the chip showed
+    // "Today: Rs 0" forever. Caught by the every-page runtime sweep.
+    const today = r.daily || {};
     _profitValue = today.gross_profit || 0;
     _updateTickerText();
   } catch {}

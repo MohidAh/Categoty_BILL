@@ -6,6 +6,13 @@ import { $, $$, toast, showLoading, hideLoading,
 
 route('/bills/', async (el, path) => {
   const id = path.split('/').pop();
+  // v8.18.11 fix: a bare /bills/ (empty id) previously fell through to
+  // /api/bills/ which redirect-followed to the LIST endpoint (200), so the
+  // page rendered a garbage "Bill #undefined" header. Guard it instead.
+  if (!id || !/^\d+$/.test(id)) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-state-icon">${icon('alert')}</div><h3>Bill not found</h3><p>No bill id in the URL.</p><button class="btn" onclick="location.hash='/bills'">Back to Bills</button></div>`;
+    return;
+  }
   let b, categories;
   try {
     [b, categories] = await Promise.all([

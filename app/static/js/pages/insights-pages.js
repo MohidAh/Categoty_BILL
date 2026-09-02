@@ -274,18 +274,23 @@ route('/insights/trends', async (el) => {
       $('#tr-insights').innerHTML = insightsHtml || '<p class="text-dim text-sm">No active insights alerts.</p>';
 
       // Seasonal
+      // v8.18.11 fix: the table read s.name/pattern, s.month, s.impact,
+      // s.recommendation — none of which /api/trends/seasonal returns
+      // (rows carry type, festival, items_to_stock, category, message,
+      // priority), so every cell rendered '—'. Rewritten to the real
+      // contract (the home dashboard already read it correctly).
       if (!seasonal.length) {
         $('#tr-seasonal').innerHTML = '<p class="text-dim text-sm">No seasonal patterns detected for the current month.</p>';
       } else {
         $('#tr-seasonal').innerHTML = `
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Pattern</th><th>Month</th><th>Impact</th><th>Recommendation</th></tr></thead>
+              <thead><tr><th>Season / Event</th><th>Timing</th><th>Priority</th><th>Recommendation</th></tr></thead>
               <tbody>${seasonal.map(s => `<tr>
-                <td class="font-semibold">${esc(s.name || s.pattern || '—')}</td>
-                <td class="text-sm">${esc(s.month || '—')}</td>
-                <td><span class="badge ${s.impact === 'high' ? 'badge-danger' : s.impact === 'medium' ? 'badge-warning' : 'badge-success'}">${esc(s.impact || '—')}</span></td>
-                <td class="text-sm">${esc(s.recommendation || s.action || '—')}</td>
+                <td class="font-semibold">${esc(s.festival || '—')}</td>
+                <td class="text-sm">${esc(s.type === 'current' ? 'This month' : 'Next month')}</td>
+                <td><span class="badge ${s.priority === 'high' ? 'badge-danger' : s.priority === 'medium' ? 'badge-warning' : 'badge-success'}">${esc(s.priority || '—')}</span></td>
+                <td class="text-sm">${esc(s.message || s.items_to_stock || '—')}</td>
               </tr>`).join('')}</tbody>
             </table>
           </div>`;

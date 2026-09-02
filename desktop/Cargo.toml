@@ -1,6 +1,6 @@
 [package]
 name = "billbook-desktop"
-version = "8.18.11"
+version = "8.18.12"
 description = "BillBook — Pakistani Wholesale POS"
 edition = "2021"
 

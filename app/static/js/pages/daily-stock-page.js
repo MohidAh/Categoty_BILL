@@ -39,7 +39,9 @@ route('/reports/daily-stock', async (el, path, q) => {
   $('#ds-date').onchange = () => { st.replace({ date: $('#ds-date').value }); loadReport(); };
   $('#ds-export-btn').onclick = () => {
     const date = $('#ds-date').value;
-    window.location.href = `/api/reports/daily-stock/export?date=${date}`;
+    // v8.18.12: format=csv — the universal export route previously only
+    // spoke pdf/excel, so this button silently downloaded an .xlsx file.
+    window.location.href = `/api/reports/daily-stock/export?format=csv&date=${date}`;
   };
   await loadReport();
 

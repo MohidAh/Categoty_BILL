@@ -25,7 +25,7 @@ const NAV_COMMANDS = [
   { type: 'action', icon: 'download', label: 'Export Bills (CSV)', hint: 'Download .csv', action: () => location.href = '/api/export.csv' },
   { type: 'action', icon: 'download', label: 'Monthly Close PDF', hint: 'Download monthly report', action: () => {
     const now = new Date();
-    location.href = `/api/reports/monthly-close.pdf?year=${now.getFullYear()}&month=${String(now.getMonth()).padStart(2, '0')}`;
+    location.href = `/api/reports/monthly-close.pdf?year=${now.getFullYear()}&month=${String(now.getMonth() + 1).padStart(2, '0')}`;
   }},
   { type: 'action', icon: 'backup', label: 'Create Backup', hint: 'Backup database now', action: async () => {
     const r = await api('/api/backup', { method: 'POST' });

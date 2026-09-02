@@ -21,7 +21,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 1418,
+    "text_len": 1308,
     "empty_state": null,
     "error_page": false
    }
@@ -35,7 +35,12 @@
    "dead_reads": [],
    "n_calls": 3,
    "pageerrors": [],
-   "console_errors": [],
+   "console_errors": [
+    "Failed to load resource: the server responded with a status of 404 ()",
+    "Failed to load resource: the server responded with a status of 404 ()",
+    "Failed to load resource: the server responded with a status of 404 ()",
+    "Failed to load resource: the server responded with a status of 404 ()"
+   ],
    "dom": {
     "dom": "OK",
     "text_len": 276,
@@ -52,12 +57,7 @@
    "dead_reads": [],
    "n_calls": 4,
    "pageerrors": [],
-   "console_errors": [
-    "Failed to load resource: the server responded with a status of 404 ()",
-    "Failed to load resource: the server responded with a status of 404 ()",
-    "Failed to load resource: the server responded with a status of 404 ()",
-    "Failed to load resource: the server responded with a status of 404 ()"
-   ],
+   "console_errors": [],
    "dom": {
     "dom": "OK",
     "text_len": 830,
@@ -344,7 +344,7 @@
    ],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 4,
+   "n_calls": 5,
    "pageerrors": [],
    "console_errors": [],
    "dom": {
@@ -361,7 +361,7 @@
    ],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 11,
+   "n_calls": 10,
    "pageerrors": [],
    "console_errors": [],
    "dom": {
@@ -860,7 +860,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 977,
+    "text_len": 967,
     "empty_state": null,
     "error_page": false
    }
@@ -877,7 +877,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 329,
+    "text_len": 339,
     "empty_state": null,
     "error_page": false
    }
@@ -979,7 +979,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 221,
+    "text_len": 208,
     "empty_state": "Nothing recorded for 2026-09\n\nNo sales, purchase bills, or expenses exist for this month. Pick a dif",
     "error_page": false
    }
@@ -991,7 +991,7 @@
    ],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 3,
+   "n_calls": 4,
    "pageerrors": [],
    "console_errors": [],
    "dom": {
@@ -1059,7 +1059,7 @@
    ],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 3,
+   "n_calls": 4,
    "pageerrors": [],
    "console_errors": [],
    "dom": {
@@ -1212,7 +1212,7 @@
    ],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 6,
+   "n_calls": 5,
    "pageerrors": [],
    "console_errors": [],
    "dom": {
@@ -1384,7 +1384,7 @@
    ],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 3,
+   "n_calls": 4,
    "pageerrors": [],
    "console_errors": [],
    "dom": {
@@ -1463,7 +1463,7 @@
    "files": [],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 2,
+   "n_calls": 3,
    "pageerrors": [],
    "console_errors": [],
    "dom": {

@@ -471,6 +471,9 @@ CREATE TABLE IF NOT EXISTS reorder_reminders (
   last_purchased TEXT,               -- date of last purchase
   days_since INTEGER,                -- days since last purchase
   suggested_quantity INTEGER,        -- based on past purchasing pattern
+  avg_price REAL,                    -- v8.18.10: avg purchase price (for order value)
+  total_purchases INTEGER,           -- v8.18.10: how many times this item was bought
+  seasonal_note TEXT,                -- v8.18.10: trends.py seasonal annotation
   priority TEXT DEFAULT 'medium',    -- 'high' | 'medium' | 'low'
   status TEXT DEFAULT 'new',         -- 'new' | 'ordered' | 'dismissed'
   created_at TEXT DEFAULT (datetime('now','localtime'))
@@ -915,6 +918,18 @@ def init():
         cd_cols = {r["name"] for r in c.execute("PRAGMA table_info(cash_drawer)").fetchall()}
         if "shift_id" not in cd_cols:
             c.execute("ALTER TABLE cash_drawer ADD COLUMN shift_id INTEGER")
+        # v8.18.10: reorder_reminders extra columns. The table existed but was
+        # NEVER written (no INSERT anywhere) — the GET endpoint returned freshly
+        # generated rows with no ids, so the /reorder page's dismiss/ordered
+        # buttons hit /api/reorder-reminders/undefined/... The GET now upserts
+        # generated rows here (see routers/inventory.py get_reorders).
+        rr_cols = {r["name"] for r in c.execute("PRAGMA table_info(reorder_reminders)").fetchall()}
+        if "avg_price" not in rr_cols:
+            c.execute("ALTER TABLE reorder_reminders ADD COLUMN avg_price REAL")
+        if "total_purchases" not in rr_cols:
+            c.execute("ALTER TABLE reorder_reminders ADD COLUMN total_purchases INTEGER")
+        if "seasonal_note" not in rr_cols:
+            c.execute("ALTER TABLE reorder_reminders ADD COLUMN seasonal_note TEXT")
         # sales.client_uuid (idempotent sales)
         if "client_uuid" not in sales_cols:
             c.execute("ALTER TABLE sales ADD COLUMN client_uuid TEXT")

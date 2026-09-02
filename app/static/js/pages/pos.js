@@ -31,12 +31,16 @@ import '../apps/pos/components/quotes.js';
 import { showScanModal, showCashActions, showZReport, toggleCustomerDisplay } from '../apps/pos/components/kiosk-extras.js';
 
 // v8.8.0: Fetch tax settings on module load
+// v8.18.10 FIX: was fetching /api/settings — an endpoint that NEVER existed —
+// and reading tax_rate (percent) / tax_inclusive ('true' string). The silent
+// catch meant the POS always computed 0% tax even when configured. The real
+// endpoint is GET /api/tax/config -> {rate: FRACTION (0.17 = 17%), inclusive: BOOL}.
 (async () => {
   try {
-    const r = await api('/api/settings');
-    window._pos_tax_rate = parseFloat(r.tax_rate || 0) / 100;
-    window._pos_tax_inclusive = (r.tax_inclusive || 'false') === 'true';
-  } catch (e) { /* settings endpoint may not exist yet — default to 0% tax */ }
+    const r = await api('/api/tax/config');
+    window._pos_tax_rate = parseFloat(r.rate || 0);            // fraction — matches cart math (subtotal * taxRate)
+    window._pos_tax_inclusive = r.inclusive === true || r.inclusive === '1' || r.inclusive === 'true';
+  } catch (e) { /* tax stays 0% / exclusive — endpoint only exists when configured */ }
 })();
 
 // ---------- helpers ----------

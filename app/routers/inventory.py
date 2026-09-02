@@ -204,11 +204,71 @@ def reorder_categories(payload: ReorderIn) -> Any:
 
 @router.get("/api/reorder-reminders")
 def get_reorders() -> Any:
-    """Get active reorder reminders."""
+    """Get active reorder reminders.
+
+    v8.18.10 FIX ("/reorder page broken"): this route used to return the
+    trends-generated list WITHOUT ids, while the dismiss/ordered/auto-PO
+    endpoints (and the /reorder page's action buttons) operate on the
+    reorder_reminders TABLE by id — a table nothing ever inserted into.
+    The page therefore showed 'Suggested: 0 / Rs 0' and its buttons POSTed
+    to /api/reorder-reminders/undefined/... (error toast).
+
+    Now: generated reminders are upserted into the table (keyed by
+    item_name + supplier_name, existing status preserved so dismissed /
+    ordered items stay gone), stale 'new' rows are dropped, and the
+    response returns table rows with status='new'.
+    """
     from .. import trends as trends_mod
-    # Generate fresh reminders each time
-    reminders = trends_mod.generate_reorder_reminders()
-    return {"reminders": reminders}
+    generated = trends_mod.generate_reorder_reminders()
+    gen_keys = {(g["item_name"], g.get("supplier_name")) for g in generated}
+    with db.conn() as c:
+        for g in generated:
+            row = c.execute(
+                "SELECT id FROM reorder_reminders "
+                "WHERE item_name=? AND IFNULL(supplier_name,'')=IFNULL(?,'')",
+                (g["item_name"], g.get("supplier_name")),
+            ).fetchone()
+            if row:
+                # refresh stats; status is intentionally NOT touched
+                c.execute(
+                    "UPDATE reorder_reminders SET supplier_name=?, avg_gap_days=?, "
+                    "last_purchased=?, days_since=?, suggested_quantity=?, avg_price=?, "
+                    "total_purchases=?, priority=?, seasonal_note=? WHERE id=?",
+                    (g.get("supplier_name"), g.get("avg_gap_days"), g.get("last_purchased"),
+                     g.get("days_since"), g.get("suggested_quantity"), g.get("avg_price"),
+                     g.get("total_purchases"), g.get("priority"), g.get("seasonal_note"),
+                     row["id"]),
+                )
+            else:
+                c.execute(
+                    "INSERT INTO reorder_reminders(item_name, supplier_name, avg_gap_days, "
+                    "last_purchased, days_since, suggested_quantity, avg_price, "
+                    "total_purchases, seasonal_note, priority, status) "
+                    "VALUES(?,?,?,?,?,?,?,?,?,?,'new')",
+                    (g["item_name"], g.get("supplier_name"), g.get("avg_gap_days"),
+                     g.get("last_purchased"), g.get("days_since"), g.get("suggested_quantity"),
+                     g.get("avg_price"), g.get("total_purchases"), g.get("seasonal_note"),
+                     g.get("priority")),
+                )
+        # Drop stale 'new' rows the generator no longer produces (item was
+        # bought again, pattern dropped below 3 purchases, or fell under the
+        # 1.2x-gap threshold). Dismissed/ordered rows are kept as history.
+        keep_ids = [r["id"] for r in c.execute(
+            "SELECT id FROM reorder_reminders WHERE status='new'"
+        ).fetchall()]
+        for rid in keep_ids:
+            row = c.execute(
+                "SELECT item_name, supplier_name FROM reorder_reminders WHERE id=?",
+                (rid,),
+            ).fetchone()
+            if row and (row["item_name"], row["supplier_name"]) not in gen_keys:
+                c.execute("DELETE FROM reorder_reminders WHERE id=?", (rid,))
+        rows = c.execute(
+            "SELECT * FROM reorder_reminders WHERE status='new' "
+            "ORDER BY CASE priority WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, "
+            "days_since DESC"
+        ).fetchall()
+    return {"reminders": [dict(r) for r in rows]}
 
 
 
@@ -434,24 +494,28 @@ def create_auto_po(payload: AutoPOIn) -> Any:
         raise HTTPException(400, "No reminders selected")
     with db.conn() as c:
         # Fetch selected reminders
+        # v8.18.10: status filter fixed — rows are written with status='new'
+        # (the old 'active' filter matched nothing, ever).
         placeholders = ",".join("?" * len(payload.reminder_ids))
         reminders = c.execute(
-            f"SELECT * FROM reorder_reminders WHERE id IN ({placeholders}) AND status='active'",
+            f"SELECT * FROM reorder_reminders WHERE id IN ({placeholders}) AND status IN ('new','active')",
             payload.reminder_ids,
         ).fetchall()
         if not reminders:
             raise HTTPException(404, "No active reminders found for given IDs")
         # Build PO items from reminders
+        # v8.18.10: field names fixed to the actual table columns (the old
+        # code read category_id/category_name/suggested_qty which never
+        # existed on this table and would have raised on every call).
         po_items = []
         for r in reminders:
-            # Get category info for pricing
-            cat = c.execute("SELECT * FROM price_categories WHERE id=?", (r["category_id"],)).fetchone() if r["category_id"] else None
-            est_price = cat["sell_wholesale"] if cat and cat["sell_wholesale"] and cat["sell_wholesale"] > 0 else (cat["sell_price"] * 0.7 if cat else 0)
+            d = dict(r)
+            est_price = d.get("avg_price") or 0
             po_items.append({
-                "item_name": f"{r['category_name']} (reorder)" if r["category_name"] else f"Category #{r['category_id']}",
-                "qty": r["suggested_qty"] or 10,
+                "item_name": d.get("item_name") or f"Reminder #{d['id']}",
+                "qty": d.get("suggested_quantity") or 10,
                 "est_price": est_price,
-                "notes": f"Auto-PO from reminder #{r['id']}",
+                "notes": f"Auto-PO from reminder #{d['id']}",
             })
         # Get supplier name
         supplier_name = payload.supplier_name
@@ -492,35 +556,39 @@ def create_master_po(payload: AutoPOIn) -> Any:
     if not payload.reminder_ids:
         raise HTTPException(400, "No reminders selected")
     with db.conn() as c:
+        # v8.18.10: status filter + field names fixed (see create_auto_po).
         placeholders = ",".join("?" * len(payload.reminder_ids))
         reminders = c.execute(
-            f"SELECT * FROM reorder_reminders WHERE id IN ({placeholders}) AND status='active'",
+            f"SELECT * FROM reorder_reminders WHERE id IN ({placeholders}) AND status IN ('new','active')",
             payload.reminder_ids,
         ).fetchall()
         if not reminders:
             raise HTTPException(404, "No active reminders found")
-        # Group by supplier (use payload.supplier_id if provided, else group by category's supplier)
+        # Group by supplier: use the supplier the item was actually bought
+        # from (carried on the reminder row), falling back to payload.
         by_supplier = {}
         for r in reminders:
-            # Try to find the most common supplier for this category
-            cat_supplier = c.execute(
-                "SELECT b.supplier_id, b.supplier_name, COUNT(*) as cnt "
-                "FROM bill_items bi JOIN bills b ON bi.bill_id = b.id "
-            "AND b.deleted_at IS NULL "
-                "WHERE bi.category_id=? AND b.supplier_id IS NOT NULL "
-                "GROUP BY b.supplier_id ORDER BY cnt DESC LIMIT 1",
-                (r["category_id"],),
-            ).fetchone() if r["category_id"] else None
-            sid = payload.supplier_id or (cat_supplier["supplier_id"] if cat_supplier else None)
-            sname = payload.supplier_name or (cat_supplier["supplier_name"] if cat_supplier else "General Supplier")
-            key = sid or 0
+            d = dict(r)
+            row_supplier = (d.get("supplier_name") or "").strip()
+            if payload.supplier_name:
+                sname = payload.supplier_name
+                sid = payload.supplier_id
+            elif row_supplier:
+                # resolve supplier id by name when possible
+                sup = c.execute("SELECT id FROM suppliers WHERE name=? ORDER BY id LIMIT 1",
+                                (row_supplier,)).fetchone()
+                sname = row_supplier
+                sid = sup["id"] if sup else None
+            else:
+                sname = "General Supplier"
+                sid = payload.supplier_id
+            key = sid or (sname or 0)
             if key not in by_supplier:
                 by_supplier[key] = {"supplier_id": sid, "supplier_name": sname, "items": []}
-            cat = c.execute("SELECT * FROM price_categories WHERE id=?", (r["category_id"],)).fetchone() if r["category_id"] else None
-            est_price = cat["sell_wholesale"] if cat and cat["sell_wholesale"] and cat["sell_wholesale"] > 0 else (cat["sell_price"] * 0.7 if cat else 0)
+            est_price = d.get("avg_price") or 0
             by_supplier[key]["items"].append({
-                "item_name": f"{r['category_name']} (reorder)" if r["category_name"] else f"Category #{r['category_id']}",
-                "qty": r["suggested_qty"] or 10,
+                "item_name": d.get("item_name") or f"Reminder #{d['id']}",
+                "qty": d.get("suggested_quantity") or 10,
                 "est_price": est_price,
             })
         # Create one PO per supplier

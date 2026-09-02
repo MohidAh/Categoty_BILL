@@ -608,31 +608,37 @@ route('/reorder', async (el) => {
         return;
       }
 
-      const totalValue = list.reduce((s, r) => s + (r.suggested_qty || 0) * (r.avg_cost || 0), 0);
+      // v8.18.10 FIX: reads the REAL API fields now. The old code read
+      // suggested_qty / avg_cost / category_name / current_stock / last_sold /
+      // code / color — none of which the endpoint ever returned, so every
+      // stat card showed 0 and the rows rendered empty shells.
+      const totalValue = list.reduce((s, rem) => s + (rem.suggested_quantity || 0) * (rem.avg_price || 0), 0);
       $('#re-stats').innerHTML = `
         <div class="grid grid-3">
-          ${statCard('Active Reminders', list.length, 'chip-warning', SVG.alert)}
-          ${statCard('Total Suggested Qty', fmt(list.reduce((s, r) => s + (r.suggested_qty || 0), 0)), 'chip-primary', SVG.box)}
+          ${statCard('Active Reminders', fmt(list.length), 'chip-warning', SVG.alert)}
+          ${statCard('Total Suggested Qty', fmt(list.reduce((s, rem) => s + (rem.suggested_quantity || 0), 0)), 'chip-primary', SVG.box)}
           ${statCard('Est. Order Value', fmtRs(totalValue), 'chip-success', SVG.shoppingBag)}
         </div>`;
 
       $('#re-list').innerHTML = `
         <div class="re-grid">
-          ${list.map(r => `
+          ${list.map(rem => `
             <div class="card re-card">
               <div class="re-card-header">
-                <span class="pos-cat-code" style="background:${esc(r.color || '#888')}">${esc(r.code || '—')}</span>
+                <span class="pos-cat-code" style="background:${
+                  rem.priority === 'high' ? 'var(--danger-soft)' : 'var(--warning-soft)'}">${
+                  esc(rem.priority || 'med')}</span>
                 <div style="flex:1">
-                  <div class="font-semibold">${esc(r.category_name || 'Category')}</div>
-                  <div class="text-xs text-dim">Current: ${fmt(r.current_stock || 0)} &middot; Suggested: ${fmt(r.suggested_qty || 0)}</div>
+                  <div class="font-semibold">${esc(rem.item_name || 'Item')}</div>
+                  <div class="text-xs text-dim">Last bought ${fmt(rem.days_since || 0)}d ago (avg gap ${fmt(rem.avg_gap_days || 0)}d) &middot; Suggested: ${fmt(rem.suggested_quantity || 0)} @ ${fmtRs(rem.avg_price || 0)}</div>
                 </div>
-                <span class="badge badge-warning">Reorder</span>
+                <span class="badge ${rem.priority === 'high' ? 'badge-danger' : 'badge-warning'}">${esc(rem.priority || 'medium')}</span>
               </div>
-              ${r.reason ? `<p class="text-sm mt-2" style="margin:8px 0 0">${esc(r.reason)}</p>` : ''}
-              ${r.last_sold ? `<p class="text-xs text-dim mt-1">Last sold: ${fmtDate(r.last_sold)}</p>` : ''}
+              ${rem.seasonal_note ? `<p class="text-sm mt-2" style="margin:8px 0 0">${esc(rem.seasonal_note)}</p>` : ''}
+              ${rem.supplier_name ? `<p class="text-xs text-dim mt-1">Usually from: ${esc(rem.supplier_name)} (${fmt(rem.total_purchases || 0)} purchases)</p>` : ''}
               <div class="re-card-actions">
-                <button class="btn btn-sm" data-re-order="${r.id}">Mark Ordered</button>
-                <button class="btn btn-secondary btn-sm" data-re-dismiss="${r.id}">Dismiss</button>
+                <button class="btn btn-sm" data-re-order="${rem.id}">Mark Ordered</button>
+                <button class="btn btn-secondary btn-sm" data-re-dismiss="${rem.id}">Dismiss</button>
               </div>
             </div>
           `).join('')}

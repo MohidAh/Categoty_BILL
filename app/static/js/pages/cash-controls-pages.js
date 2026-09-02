@@ -72,8 +72,11 @@ export async function openShiftCloseModal(opts = {}) {
     try {
       const r = await api('/api/shifts/current');
       if (r.shift) {
-        // Compute expected via a quick call to /api/cash-drawer/status
-        const status = await api('/api/cash-drawer/status');
+        // Compute expected via the drawer status endpoint
+        // v8.18.10 FIX: was calling /api/cash-drawer/status (404 — the route
+        // is GET /api/cash-drawer), so Expected Cash was always blank in the
+        // non-blind shift close.
+        const status = await api('/api/cash-drawer');
         expectedCash = status.current_cash;
       }
     } catch (e) { /* ignore */ }

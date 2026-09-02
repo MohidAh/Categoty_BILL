@@ -850,9 +850,12 @@ route('/reports/monthly-close', async (el) => {
       const billsCount = r.bills_count ?? r.total_bills ?? 0;
       const grossProfit = r.gross_profit ?? 0;
       const opExp = r.operating_expenses ?? 0;
+      // v8.18.14: extra (non-POS) sales — own line so it's differentiable
+      const extraIncome = r.extra_sales_income ?? 0;
+      const extraCount = r.extra_sales_count ?? 0;
 
       const hasData = (salesCount + billsCount + (r.refunded_sales_count || 0)) > 0
-        || revenue > 0 || (r.total_spent || 0) > 0 || opExp > 0;
+        || revenue > 0 || (r.total_spent || 0) > 0 || opExp > 0 || extraIncome > 0;
 
       if (!hasData) {
         $('#mc-out').innerHTML = emptyState(
@@ -871,9 +874,9 @@ route('/reports/monthly-close', async (el) => {
         <div class="grid grid-4 mb-4">
           ${statCard('POS Sales', fmt(salesCount), 'chip-primary', SVG.bills)}
           ${statCard('Revenue', fmtRs(revenue), 'chip-success', SVG.wallet,
-                     `Credit sales: ${fmtRs(r.sales_credit_total || 0)}`)}
+                     extraIncome > 0 ? `+ Extra Sales: ${fmtRs(extraIncome)} (${fmt(extraCount)})` : `Credit sales: ${fmtRs(r.sales_credit_total || 0)}`)}
           ${statCard('Net Profit', fmtRs(netProfit), netProfit >= 0 ? 'chip-success' : 'chip-danger', SVG.trendUp,
-                     `Gross: ${fmtRs(grossProfit)} − Op Ex: ${fmtRs(opExp)}`)}
+                     extraIncome > 0 ? `Gross: ${fmtRs(grossProfit)} + Extra: ${fmtRs(extraIncome)} − Op Ex: ${fmtRs(opExp)}` : `Gross: ${fmtRs(grossProfit)} − Op Ex: ${fmtRs(opExp)}`)}
           ${statCard('Bills Processed', fmt(billsCount), 'chip-warning', SVG.file,
                      `Purchases: ${fmtRs(r.total_spent || 0)}`)}
         </div>
@@ -887,10 +890,11 @@ route('/reports/monthly-close', async (el) => {
                 'Discounts Given': r.discounts_given || 0,
                 'Sales on Credit (udhaar)': r.sales_credit_total || 0,
                 'Refunded Sales': `${fmt(r.refunded_sales_count || 0)} / ${fmtRs(r.refunded_total || 0)}`,
+                'Extra Sales (non-POS — cartons, raddi)': extraIncome > 0 ? `${fmt(extraCount)} / ${fmtRs(extraIncome)}` : '—',
                 'Cost of Goods Sold': r.cost_of_goods ?? 0,
-                'Gross Profit': grossProfit,
+                'Gross Profit (POS)': grossProfit,
                 'Operating Expenses': opExp,
-                'Net Profit': netProfit,
+                'Net Profit (gross + extra − op. expenses)': netProfit,
                 'Owner Draws (not expense)': r.owner_draws || 0,
               })}
               ${audit}
@@ -1087,6 +1091,8 @@ route('/reports/profit-analysis', async (el) => {
       }
       const t = r.totals || {};
       const rows = groupBy === 'month' ? (r.months || []) : (r.categories || []);
+      // v8.18.14: extra (non-POS) sales income — separate from POS revenue
+      const extraIncome = t.extra_sales_income || r.extra_sales_income || 0;
 
       if (!rows.length) {
         $('#pa-out').innerHTML = emptyState('No sales in this period', 'Try a wider date range.', '', '');
@@ -1099,8 +1105,14 @@ route('/reports/profit-analysis', async (el) => {
           ${statCard('COGS', fmtRs(t.cogs), 'chip-warning', SVG.wallet)}
           ${statCard('Gross Profit', fmtRs(t.gross_profit), 'chip-success', SVG.trendUp)}
           ${statCard('Margin', `${t.margin_pct}%`, 'chip-primary', SVG.trendUp,
-                     groupBy === 'month' ? `Op Expenses: ${fmtRs(t.operating_expenses)}` : `Qty Sold: ${fmt(t.qty_sold)}`)}
+                     groupBy === 'month' ? (extraIncome > 0 ? `+ Extra Sales: ${fmtRs(extraIncome)}` : `Op Expenses: ${fmtRs(t.operating_expenses)}`) : (extraIncome > 0 ? `+ Extra Sales: ${fmtRs(extraIncome)}` : `Qty Sold: ${fmt(t.qty_sold)}`))}
         </div>
+
+        ${extraIncome > 0 ? `
+        <div class="card" style="padding:12px;margin-bottom:12px;background:var(--success-soft, #f0fdf4);border-left:3px solid var(--success, #16a34a)">
+          <strong style="color:var(--success-text, #16a34a)">Extra Sales (non-POS): ${fmtRs(extraIncome)}</strong>
+          <span class="text-dim" style="font-size:12px"> — income from non-stock items sold outside the POS (cartons, raddi/scrap...). No COGS, kept separate from POS category/month revenue above; ${groupBy === 'month' ? 'included in Operating Profit' : 'NOT included in the category totals below'}. <a href="#/bills/extra-sales" style="text-decoration:underline">Manage Extra Sales →</a></span>
+        </div>` : ''}
 
         <div class="card">
           ${groupBy !== 'month' ? `
@@ -1142,6 +1154,7 @@ route('/reports/profit-analysis', async (el) => {
                 <th>Month</th><th class="table-num">Qty Sold</th>
                 <th class="table-num">Revenue</th><th class="table-num">COGS</th>
                 <th class="table-num">Gross Profit</th><th class="table-num">Margin %</th>
+                <th class="table-num" title="Extra (non-POS) sales income — cartons, raddi... No COGS, separate from POS revenue." style="color:var(--success-text, #16a34a)">Extra Sales (non-POS)</th>
                 <th class="table-num">Op Expenses</th><th class="table-num">Op Profit</th>
               </tr></thead>
               <tbody>
@@ -1152,6 +1165,7 @@ route('/reports/profit-analysis', async (el) => {
                   <td class="table-num">${fmtRs(m.cogs)}</td>
                   <td class="table-num ${m.gross_profit >= 0 ? 'text-success' : 'text-danger'}">${fmtRs(m.gross_profit)}</td>
                   <td class="table-num ${m.margin_pct >= 30 ? 'text-success' : m.margin_pct >= 20 ? 'text-warning' : 'text-danger'}">${m.margin_pct}%</td>
+                  <td class="table-num text-success">${(m.extra_sales_income || 0) > 0 ? `+ ${fmtRs(m.extra_sales_income)}` : '—'}</td>
                   <td class="table-num">${fmtRs(m.operating_expenses)}</td>
                   <td class="table-num ${m.operating_profit >= 0 ? 'text-success' : 'text-danger'}">${fmtRs(m.operating_profit)}</td>
                 </tr>`).join('')}
@@ -1163,6 +1177,7 @@ route('/reports/profit-analysis', async (el) => {
                 <td class="table-num">${fmtRs(t.cogs)}</td>
                 <td class="table-num">${fmtRs(t.gross_profit)}</td>
                 <td class="table-num">${t.margin_pct}%</td>
+                <td class="table-num text-success">${extraIncome > 0 ? `+ ${fmtRs(extraIncome)}` : '—'}</td>
                 <td class="table-num">${fmtRs(t.operating_expenses)}</td>
                 <td class="table-num">${fmtRs(t.operating_profit)}</td>
               </tr></tfoot>

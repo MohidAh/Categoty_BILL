@@ -21,7 +21,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 1418,
+    "text_len": 1552,
     "empty_state": null,
     "error_page": false
    }
@@ -35,11 +35,7 @@
    "dead_reads": [],
    "n_calls": 3,
    "pageerrors": [],
-   "console_errors": [
-    "Failed to load resource: the server responded with a status of 404 ()",
-    "Failed to load resource: the server responded with a status of 404 ()",
-    "Failed to load resource: the server responded with a status of 404 ()"
-   ],
+   "console_errors": [],
    "dom": {
     "dom": "OK",
     "text_len": 276,
@@ -57,6 +53,9 @@
    "n_calls": 4,
    "pageerrors": [],
    "console_errors": [
+    "Failed to load resource: the server responded with a status of 404 ()",
+    "Failed to load resource: the server responded with a status of 404 ()",
+    "Failed to load resource: the server responded with a status of 404 ()",
     "Failed to load resource: the server responded with a status of 404 ()"
    ],
    "dom": {
@@ -129,7 +128,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 437,
+    "text_len": 447,
     "empty_state": null,
     "error_page": false
    }
@@ -328,7 +327,7 @@
    ],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 2,
+   "n_calls": 3,
    "pageerrors": [],
    "console_errors": [],
    "dom": {
@@ -758,7 +757,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 329,
+    "text_len": 330,
     "empty_state": null,
     "error_page": false
    }
@@ -861,7 +860,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 390,
+    "text_len": 380,
     "empty_state": null,
     "error_page": false
    }
@@ -878,7 +877,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 1212,
+    "text_len": 1222,
     "empty_state": null,
     "error_page": false
    }
@@ -1065,7 +1064,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 361,
+    "text_len": 351,
     "empty_state": null,
     "error_page": false
    }
@@ -1082,7 +1081,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 408,
+    "text_len": 418,
     "empty_state": null,
     "error_page": false
    }
@@ -1201,7 +1200,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 504,
+    "text_len": 551,
     "empty_state": null,
     "error_page": false
    }
@@ -1366,7 +1365,7 @@
    ],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 3,
+   "n_calls": 4,
    "pageerrors": [],
    "console_errors": [],
    "dom": {
@@ -1383,7 +1382,7 @@
    ],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 3,
+   "n_calls": 4,
    "pageerrors": [],
    "console_errors": [],
    "dom": {
@@ -1400,7 +1399,7 @@
    ],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 6,
+   "n_calls": 7,
    "pageerrors": [],
    "console_errors": [
     "ReferenceError: emptyState is not defined\n    at http://127.0.0.1:8821/static/js/pages/supplier-detail.js:10:5\n    at render (http://127.0.0.1:8821/static/js/router.js:140:13)"
@@ -1513,7 +1512,7 @@
    "files": [],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 4,
+   "n_calls": 3,
    "pageerrors": [],
    "console_errors": [],
    "dom": {

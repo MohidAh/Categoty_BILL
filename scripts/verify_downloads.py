@@ -170,8 +170,10 @@ CHECKS = [
 
 # universal route: ALL report names from the backend report_map, pdf + excel.
 # Param groups mirror the export route's dispatch logic.
+# v8.18.14: extra-sales added (new report wired to the Extra Sales page buttons)
 UNIV_MONTH = ["monthly", "ytd", "margins", "earnings", "actual-earnings",
-              "pnl", "cash-flow", "expenses", "store-profit", "balance-sheet"]
+              "pnl", "cash-flow", "expenses", "store-profit", "balance-sheet",
+              "extra-sales"]
 UNIV_DATE = ["cash-buckets", "daily-stock"]
 UNIV_RANGE = ["profit-analysis", "sold-stock", "top-items", "peak-hours",
               "shrinkage", "sales-by-customer", "sales-by-employee",

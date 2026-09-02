@@ -18,6 +18,7 @@ const SVG = {
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>',
   search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+  download: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
 };
 
 function statCard(label, value, chipClass, svgIcon, sub = '') {
@@ -52,6 +53,14 @@ route('/bills/extra-sales', async (el, path, q) => {
           <span class="pos-date-input-icon">${SVG.calendar}</span>
           <input class="input input-sm" id="xs-month" type="month" value="${thisMonth}">
         </div>
+        <button class="btn btn-secondary btn-sm" id="xs-export-pdf" title="Download this month's Extra Sales report as PDF">
+          <span style="display:inline-flex;width:14px;height:14px">${SVG.download}</span>
+          PDF
+        </button>
+        <button class="btn btn-secondary btn-sm" id="xs-export-excel" title="Download this month's Extra Sales report as Excel">
+          <span style="display:inline-flex;width:14px;height:14px">${SVG.download}</span>
+          Excel
+        </button>
         <button class="btn btn-primary btn-sm" id="xs-add-btn">
           <span style="display:inline-flex;width:14px;height:14px">${SVG.plus}</span>
           Add Extra Sale
@@ -81,6 +90,16 @@ route('/bills/extra-sales', async (el, path, q) => {
 
   $('#xs-month').onchange = () => { st.replace({ month: $('#xs-month').value }); loadAll(); };
   $('#xs-add-btn').onclick = () => openAddModal();
+  // v8.18.14: month-scoped PDF/Excel exports via the universal report route
+  // (report name 'extra-sales' → shop.get_extra_sales_report(month))
+  $('#xs-export-pdf').onclick = () => {
+    const m = $('#xs-month').value || thisMonth;
+    window.open(`/api/reports/extra-sales/export?format=pdf&month=${encodeURIComponent(m)}`, '_blank');
+  };
+  $('#xs-export-excel').onclick = () => {
+    const m = $('#xs-month').value || thisMonth;
+    window.open(`/api/reports/extra-sales/export?format=excel&month=${encodeURIComponent(m)}`, '_blank');
+  };
   let _searchTimer = null;
   $('#xs-search').oninput = () => {
     clearTimeout(_searchTimer);

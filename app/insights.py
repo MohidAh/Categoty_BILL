@@ -617,6 +617,23 @@ def monthly_close(year: int, month: int) -> dict:
             "FROM expenses WHERE strftime('%Y-%m', date)=?",
             (month_str,)
         ).fetchone()
+        # v8.18.14 — extra (non-POS) sales for the month: cartons, raddi,
+        # scrap etc. recorded on the Extra Sales page. Pure other income:
+        # no COGS, no category, NOT part of `sales`. Kept as its own line
+        # everywhere so it is differentiable from POS sales.
+        try:
+            extra_agg = c.execute(
+                "SELECT COUNT(*) AS n, COALESCE(SUM(total), 0) AS v "
+                "FROM extra_sales WHERE strftime('%Y-%m', sale_date)=?",
+                (month_str,)
+            ).fetchone()
+        except Exception:
+            extra_agg = {"n": 0, "v": 0}  # table not migrated yet (legacy DB)
+        extra_sales_entries = [dict(r) for r in c.execute(
+            "SELECT id, sale_date, item_name, description, quantity, unit_price, total "
+            "FROM extra_sales WHERE strftime('%Y-%m', sale_date)=? ORDER BY sale_date, id",
+            (month_str,)
+        ).fetchall()] if extra_agg["n"] else []
 
     # Summary — bills (buy side, unchanged)
     total_spent = sum(b["written_total"] or b["computed_total"] or 0 for b in bills)
@@ -648,7 +665,10 @@ def monthly_close(year: int, month: int) -> dict:
     gross_profit = round(total_revenue - total_cogs, 2)
     operating_expenses = round(exp_agg["operating"] or 0, 2)
     owner_draws = round(exp_agg["owner_draws"] or 0, 2)
-    net_profit = round(gross_profit - operating_expenses, 2)
+    # v8.18.14: extra (non-POS) sales — other income, added to net profit
+    extra_sales_count = int(extra_agg["n"] or 0)
+    extra_sales_income = round(float(extra_agg["v"] or 0), 2)
+    net_profit = round(gross_profit + extra_sales_income - operating_expenses, 2)
     refunded_count = refunds_agg["n"] or 0
     refunded_total = round(refunds_agg["total"] or 0, 2)
     credit_sales_total = round(credit_sales["total"] or 0, 2)
@@ -656,15 +676,18 @@ def monthly_close(year: int, month: int) -> dict:
     # v8.18.9 — the flat key→value list the UI's "Snapshot" card renders.
     # Convention: NUMBERS are money (UI renders them as Rs), STRINGS are
     # counts/labels (rendered verbatim).
+    # v8.18.14: extra sales appear as their own clearly-labeled lines —
+    # differentiable from POS sales revenue.
     details = {
         "POS Sales (invoices)": str(sales_count),
         "Sales Revenue (net of discounts)": total_revenue,
         "Sales on Credit (udhaar)": credit_sales_total,
         "Refunded Sales (count / amount)": f"{refunded_count} / Rs {refunded_total:,.0f}",
+        "Extra Sales (non-POS — cartons, raddi)": f"{extra_sales_count} / Rs {extra_sales_income:,.0f}",
         "Cost of Goods Sold": total_cogs,
-        "Gross Profit (revenue − COGS)": gross_profit,
+        "Gross Profit (POS revenue − COGS)": gross_profit,
         "Operating Expenses": operating_expenses,
-        "Net Profit (gross − op. expenses)": net_profit,
+        "Net Profit (gross + extra sales − op. expenses)": net_profit,
         "Owner Draws (equity, not expense)": owner_draws,
         "Purchase Bills (count)": str(len(bills)),
         "Purchases Total (bills)": round(total_spent, 2),
@@ -687,6 +710,11 @@ def monthly_close(year: int, month: int) -> dict:
         "gross_profit": gross_profit,
         "operating_expenses": operating_expenses,
         "owner_draws": owner_draws,
+        # v8.18.14: extra (non-POS) sales — own keys + line items so every
+        # export (page/PDF/Excel/CSV) can show them separately from POS sales
+        "extra_sales_count": extra_sales_count,
+        "extra_sales_income": extra_sales_income,
+        "extra_sales": extra_sales_entries,
         "net_profit": net_profit,
         "total_profit": net_profit,  # alias the old UI expected
         "sales_by_category": [dict(r) for r in sales_by_cat],

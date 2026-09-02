@@ -2134,6 +2134,42 @@ def _extra_sales_month_total(c, month: str) -> float:
     return float(v or 0)
 
 
+def get_extra_sales_report(month: str = "") -> dict:
+    """v8.18.14: standalone Extra Sales report for the universal export route
+    (PDF / Excel / CSV buttons on the Extra Sales page). Returns the month
+    summary KPIs + the full entries table + top-items table. Every number
+    here is non-POS income (cartons, raddi, scrap...) — the report title
+    and labels keep it differentiable from POS sales reports."""
+    if not month:
+        month = datetime.now().strftime("%Y-%m")
+    summary = get_extra_sales_summary(month)
+    entries = list_extra_sales(month=month, limit=1000)
+    # Curated columns for the export table (skip internal created/updated_by)
+    sales_list = [
+        {
+            "sale_date": e.get("sale_date", ""),
+            "item_name": e.get("item_name", ""),
+            "description": e.get("description", ""),
+            "quantity": e.get("quantity", 0),
+            "unit_price": e.get("unit_price", 0),
+            "total": e.get("total", 0),
+            "payment_method": e.get("payment_method", "cash"),
+        }
+        for e in entries
+    ]
+    return {
+        "month": month,
+        "report_title": "Extra Sales (Non-POS) Report",
+        "total_income": summary["month_total"],
+        "entries": summary["entries"],
+        "last_month_total": summary["last_month_total"],
+        "delta_pct": summary["delta_pct"],
+        "total_qty": summary["total_qty"],
+        "sales_list": sales_list,   # entries table (rows of extra sales)
+        "top_items": summary["by_item"],
+    }
+
+
 # ---------- Held Orders (park & recall) ----------
 
 def hold_order(customer_name: str, customer_phone: str, notes: str,

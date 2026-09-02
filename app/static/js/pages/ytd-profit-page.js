@@ -26,7 +26,7 @@ route('/reports/ytd', async (el) => {
 
   try {
     const r = await api('/api/profit/ytd');
-    if (r.ytd_sales === 0) {
+    if (r.ytd_sales === 0 && (r.ytd_extra_sales_income || 0) === 0) {
       $('#ytd-out').innerHTML = `
         <div class="card text-center" style="padding:48px">
           <p style="font-weight:600;margin-bottom:8px">No sales yet</p>
@@ -34,6 +34,9 @@ route('/reports/ytd', async (el) => {
         </div>`;
       return;
     }
+    // v8.18.14: extra (non-POS) sales income YTD — own line, included in
+    // YTD operating profit, never merged into YTD sales/margin
+    const ytdExtra = r.ytd_extra_sales_income || 0;
 
     $('#ytd-out').innerHTML = `
       <div class="card" style="padding:24px;margin-bottom:16px;border:2px solid var(--success, #16a34a);background:var(--success-soft, #f0fdf4)">
@@ -51,22 +54,35 @@ route('/reports/ytd', async (el) => {
 
       <div class="grid grid-4" style="gap:12px;margin-bottom:16px">
         <div class="card" style="padding:16px">
-          <div class="text-dim text-sm" style="text-transform:uppercase;font-weight:600">YTD Sales</div>
+          <div class="text-dim text-sm" style="text-transform:uppercase;font-weight:600">YTD Sales (POS)</div>
           <div style="font-size:22px;font-weight:700;margin-top:4px">${fmtRs(r.ytd_sales)}</div>
-        </div>
-        <div class="card" style="padding:16px">
-          <div class="text-dim text-sm" style="text-transform:uppercase;font-weight:600">YTD COGS</div>
-          <div style="font-size:22px;font-weight:700;margin-top:4px">${fmtRs(r.ytd_cogs)}</div>
         </div>
         <div class="card" style="padding:16px">
           <div class="text-dim text-sm" style="text-transform:uppercase;font-weight:600">YTD Gross Profit</div>
           <div style="font-size:22px;font-weight:700;margin-top:4px;color:var(--success-text, #16a34a)">${fmtRs(r.ytd_gross_profit)}</div>
         </div>
         <div class="card" style="padding:16px">
+          <div class="text-dim text-sm" style="text-transform:uppercase;font-weight:600">YTD Operating Expenses</div>
+          <div style="font-size:22px;font-weight:700;margin-top:4px">${fmtRs(r.ytd_operating_expenses)}</div>
+        </div>
+        <div class="card" style="padding:16px">
           <div class="text-dim text-sm" style="text-transform:uppercase;font-weight:600">YTD Operating Profit</div>
           <div style="font-size:22px;font-weight:700;margin-top:4px;color:${r.ytd_operating_profit >= 0 ? 'var(--success-text, #16a34a)' : 'var(--danger-text, #dc2626)'}">${fmtRs(r.ytd_operating_profit)}</div>
+          <div class="text-dim text-sm">${ytdExtra > 0 ? `includes +${fmtRs(ytdExtra)} extra sales` : 'gross profit − operating expenses'}</div>
         </div>
       </div>
+
+      ${ytdExtra > 0 ? `
+      <div class="card" style="padding:14px;margin-bottom:16px;border-left:3px solid var(--success, #16a34a)">
+        <div style="display:flex;gap:8px;align-items:center">
+          <span style="display:inline-flex;width:18px;height:18px;color:var(--success-text, #16a34a)">${SVG.chart}</span>
+          <div class="text-sm">
+            <strong>YTD Extra Sales (non-POS): ${fmtRs(ytdExtra)}</strong> — income from non-stock items
+            (cartons, raddi/scrap...) sold outside the POS. No COGS; included in YTD Operating Profit above
+            but <strong>not</strong> in YTD Sales or margin. <a href="#/bills/extra-sales" style="text-decoration:underline">Manage Extra Sales →</a>
+          </div>
+        </div>
+      </div>` : ''}
 
       <div class="card" style="padding:16px;margin-bottom:16px">
         <div style="display:flex;gap:8px;align-items:center">
@@ -103,6 +119,15 @@ route('/reports/ytd', async (el) => {
               data: r.monthly.map(m => m.gross_profit),
               borderColor: colors[0],
               backgroundColor: colors[0] + '33',
+              yAxisID: 'y',
+              tension: 0.3,
+              fill: true,
+            },
+            {
+              label: 'Extra Sales (non-POS)',
+              data: r.monthly.map(m => m.extra_sales_income || 0),
+              borderColor: 'var(--success, #16a34a)',
+              backgroundColor: 'rgba(22, 163, 74, 0.15)',
               yAxisID: 'y',
               tension: 0.3,
               fill: true,

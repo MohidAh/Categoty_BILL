@@ -52,7 +52,7 @@ route('/reports/monthly-profit', async (el) => {
     const month = $('#mp-month').value;
     try {
       const r = await api(`/api/profit/monthly?month=${month}`);
-      if (r.sales === 0 && r.cogs === 0) {
+      if (r.sales === 0 && r.cogs === 0 && (r.extra_sales_income || 0) === 0) {
         $('#mp-out').innerHTML = `
           <div class="card text-center" style="padding:48px">
             <p style="font-weight:600;margin-bottom:8px">No data for ${esc(month)}</p>
@@ -60,7 +60,10 @@ route('/reports/monthly-profit', async (el) => {
           </div>`;
         return;
       }
-      const bridgeValues = [r.opening_inventory, r.purchases, r.closing_inventory, r.cogs, r.sales, r.gross_profit, r.operating_expenses, r.operating_profit];
+      // v8.18.14: extra (non-POS) sales income — shown as its own step in the
+      // waterfall so it stays differentiable from POS sales
+      const extraIncome = r.extra_sales_income || 0;
+      const bridgeValues = [r.opening_inventory, r.purchases, r.closing_inventory, r.cogs, r.sales, r.gross_profit, r.operating_expenses, r.operating_profit, extraIncome];
       const maxAbs = Math.max(...bridgeValues.map(Math.abs), 1);
       const cogsMatch = Math.abs(r.cogs - r.cogs_from_sales) < 1.0;
 
@@ -108,12 +111,17 @@ route('/reports/monthly-profit', async (el) => {
 
         <div class="card" style="padding:24px">
           <h3 style="margin-bottom:4px">Profit Waterfall</h3>
-          <p class="text-dim text-sm" style="margin-bottom:20px">Sales → −COGS → =Gross Profit → −Operating Expenses → =Operating Profit</p>
-          ${bridgeBar('Sales', r.sales, maxAbs, 'positive')}
+          <p class="text-dim text-sm" style="margin-bottom:20px">Sales → −COGS → =Gross Profit${extraIncome > 0 ? ' → +Extra Sales (non-POS)' : ''} → −Operating Expenses → =Operating Profit</p>
+          ${bridgeBar('Sales (POS)', r.sales, maxAbs, 'positive')}
           ${bridgeBar('− COGS', r.cogs, maxAbs, 'negative')}
           ${bridgeBar('= Gross Profit', r.gross_profit, maxAbs, 'result')}
+          ${extraIncome > 0 ? bridgeBar('+ Extra Sales (non-POS — cartons, raddi)', extraIncome, maxAbs, 'positive') : ''}
           ${bridgeBar('− Operating Expenses', r.operating_expenses, maxAbs, 'negative')}
           ${bridgeBar('= Operating Profit', r.operating_profit, maxAbs, 'result')}
+          ${extraIncome > 0 ? `
+            <div style="margin-top:12px;padding:10px;background:var(--bg-2, #f3f4f6);border-left:3px solid var(--success, #16a34a);border-radius:8px;font-size:13px">
+              <strong>Extra Sales: ${fmtRs(extraIncome)}</strong> — income from non-stock items sold outside the POS (cartons, raddi/scrap...). No COGS, not included in the Sales figure above. <a href="#/bills/extra-sales" style="text-decoration:underline">Manage Extra Sales →</a>
+            </div>` : ''}
           ${r.owner_draws > 0 ? `
             <div style="margin-top:12px;padding:10px;background:var(--bg-2, #f3f4f6);border-radius:8px;font-size:13px">
               <strong>Owner Draws: ${fmtRs(r.owner_draws)}</strong> — excluded from operating expenses (equity reduction).

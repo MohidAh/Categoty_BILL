@@ -189,6 +189,12 @@ route('/reports/store-profit', async (el) => {
               <div class="text-dim text-sm">Operating Expenses</div>
               <div style="font-size:14px">${fmtRs(d.monthly.operating_expenses)}</div>
             </div>
+            ${(d.monthly.extra_sales_income || 0) > 0 ? `
+            <div style="grid-column:1/-1;padding:8px;background:var(--success-soft, #f0fdf4);border-left:3px solid var(--success, #16a34a);border-radius:6px">
+              <div class="text-dim text-sm">Extra Sales (non-POS)</div>
+              <div style="font-size:16px;font-weight:700;color:var(--success-text, #16a34a)">+ ${fmtRs(d.monthly.extra_sales_income)}</div>
+              <div class="text-dim text-sm" style="font-size:11px">cartons, raddi... — no COGS, included in Operating Profit, separate from Sales</div>
+            </div>` : ''}
           </div>
         </div>
 
@@ -215,6 +221,16 @@ route('/reports/store-profit', async (el) => {
               <div class="text-dim text-sm">YTD COGS</div>
               <div style="font-size:14px">${fmtRs(d.ytd.cogs)}</div>
             </div>
+            ${(d.ytd.ytd_extra_sales_income || 0) > 0 ? `
+            <div style="grid-column:1/-1;padding:8px;background:var(--success-soft, #f0fdf4);border-left:3px solid var(--success, #16a34a);border-radius:6px">
+              <div class="text-dim text-sm">YTD Extra Sales (non-POS)</div>
+              <div style="font-size:16px;font-weight:700;color:var(--success-text, #16a34a)">+ ${fmtRs(d.ytd.ytd_extra_sales_income)}</div>
+              <div class="text-dim text-sm" style="font-size:11px">included in YTD Operating Profit, not in Sales/margin</div>
+            </div>
+            <div>
+              <div class="text-dim text-sm">YTD Operating Profit</div>
+              <div style="font-size:16px;font-weight:600;color:${(d.ytd.ytd_operating_profit || 0) >= 0 ? 'var(--success-text, #16a34a)' : 'var(--danger-text, #dc2626)'}">${fmtRs(d.ytd.ytd_operating_profit || 0)}</div>
+            </div>` : ''}
           </div>
           <div class="text-dim text-sm" style="margin-top:8px">Since ${esc(d.ytd.opening_date)}</div>
         </div>

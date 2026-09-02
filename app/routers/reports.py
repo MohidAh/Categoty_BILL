@@ -398,6 +398,65 @@ def monthly_close_pdf(year: int, month: int) -> Any:
     elements.append(Paragraph(f"<b>Suppliers:</b> {data['supplier_count']}", normal_style))
     elements.append(Spacer(1, 10*mm))
 
+    # v8.18.14 — Sales & Income Summary. The dedicated PDF used to show
+    # ONLY the buy side (bills); the sell side existed in the JSON but never
+    # rendered here. Extra (non-POS) sales get their own clearly-labeled
+    # line so they are differentiable from POS sales revenue.
+    elements.append(Paragraph("Sales &amp; Income Summary", heading_style))
+    _es = data.get("extra_sales_income") or 0
+    _es_n = data.get("extra_sales_count") or 0
+    summary_rows = [
+        ["Item", "Amount"],
+        ["POS Sales Revenue (net of discounts)", f"Rs {data['total_revenue']:,.0f}"],
+        ["POS Sales Invoices", str(data['sales_count'])],
+        ["Extra Sales — non-POS (cartons, raddi…)",
+         f"Rs {_es:,.0f}  ({_es_n} entries)"],
+        ["Cost of Goods Sold (POS)", f"Rs {data['cost_of_goods']:,.0f}"],
+        ["Gross Profit (POS revenue − COGS)", f"Rs {data['gross_profit']:,.0f}"],
+        ["Operating Expenses", f"Rs {data['operating_expenses']:,.0f}"],
+        ["Net Profit (gross + extra sales − op. expenses)",
+         f"Rs {data['net_profit']:,.0f}"],
+        ["Owner Draws (equity, not expense)", f"Rs {data.get('owner_draws') or 0:,.0f}"],
+    ]
+    t_sum = Table(summary_rows, colWidths=[120*mm, 55*mm])
+    t_sum.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e293b')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTSIZE', (0, 0), (-1, -1), 9),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
+        # highlight the extra-sales row so it stands out from POS lines
+        ('BACKGROUND', (0, 3), (-1, 3), colors.HexColor('#ecfdf5')),
+    ]))
+    elements.append(t_sum)
+    elements.append(Spacer(1, 8*mm))
+
+    # v8.18.14 — Extra Sales line items table (only when entries exist)
+    if data.get("extra_sales"):
+        elements.append(Paragraph("Extra Sales Entries (non-POS)", heading_style))
+        es_rows = [["Date", "Item", "Description", "Qty", "Rate", "Total"]]
+        for e in data["extra_sales"]:
+            es_rows.append([
+                (e["sale_date"] or "")[:10],
+                e["item_name"] or "—",
+                (e["description"] or "—")[:40],
+                f"{e['quantity']:g}",
+                f"Rs {e['unit_price']:,.0f}",
+                f"Rs {e['total']:,.0f}",
+            ])
+        es_rows.append(["", "", "", "", "TOTAL", f"Rs {_es:,.0f}"])
+        t_es = Table(es_rows, colWidths=[22*mm, 38*mm, 55*mm, 15*mm, 22*mm, 23*mm])
+        t_es.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#059669')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8fafc')]),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ]))
+        elements.append(t_es)
+        elements.append(Spacer(1, 8*mm))
+
     # Bills table
     elements.append(Paragraph("Bills", heading_style))
     bill_rows = [["ID", "Date", "Supplier", "Total", "Payment"]]
@@ -946,22 +1005,27 @@ def r_profit_analysis_export(start: str = "", end: str = "", group_by: str = "ca
     w.writerow(["Gross Profit", t.get("gross_profit", 0)])
     w.writerow(["Margin %", t.get("margin_pct", 0)])
     w.writerow(["Qty Sold", t.get("qty_sold", 0)])
+    # v8.18.14: extra (non-POS) sales income — own labeled row so it's
+    # differentiable from POS revenue in the export
+    w.writerow(["Extra Sales Income (non-POS — cartons, raddi)", t.get("extra_sales_income", 0)])
     if group_by == "month":
         w.writerow(["Operating Expenses", t.get("operating_expenses", 0)])
-        w.writerow(["Operating Profit", t.get("operating_profit", 0)])
+        w.writerow(["Operating Profit (incl. extra sales)", t.get("operating_profit", 0)])
     w.writerow([])
 
     # Detailed table
     if group_by == "month":
         w.writerow(["Month", "Qty Sold", "Revenue", "COGS", "Gross Profit",
-                    "Margin %", "Operating Expenses", "Operating Profit"])
+                    "Margin %", "Extra Sales (non-POS)", "Operating Expenses", "Operating Profit"])
         for m in data.get("months", []):
             w.writerow([m["month"], m["qty_sold"], m["revenue"], m["cogs"],
                         m["gross_profit"], m["margin_pct"],
+                        m.get("extra_sales_income", 0),
                         m["operating_expenses"], m["operating_profit"]])
         w.writerow(["TOTAL", t.get("qty_sold", 0), t.get("revenue", 0),
                     t.get("cogs", 0), t.get("gross_profit", 0),
-                    t.get("margin_pct", 0), t.get("operating_expenses", 0),
+                    t.get("margin_pct", 0), t.get("extra_sales_income", 0),
+                    t.get("operating_expenses", 0),
                     t.get("operating_profit", 0)])
     else:
         w.writerow(["Code", "Category", "Qty Sold", "Revenue", "COGS",
@@ -1161,6 +1225,9 @@ def universal_report_export(report_name: str, request: Request) -> Any:
         "suspicious": ("app.shop", "list_suspicious_events"),
         "monthly-close": ("app.insights", "monthly_close"),
         "targets": ("app.pos_import", "get_target_progress"),
+        # v8.18.14: Extra Sales (non-POS) report — powers the PDF/Excel/CSV
+        # export buttons on the Extra Sales page
+        "extra-sales": ("app.shop", "get_extra_sales_report"),
     }
     
     if report_name not in report_map:
@@ -1215,7 +1282,8 @@ def universal_report_export(report_name: str, request: Request) -> Any:
         # ── Original param-passing logic ────────────────────────────────
         # Reports that take (month) or () — no params or month only
         elif report_name in ("monthly", "ytd", "margins", "earnings", "actual-earnings", "pnl", 
-                           "cash-flow", "balance-sheet", "expenses", "store-profit", "overview"):
+                           "cash-flow", "balance-sheet", "expenses", "store-profit", "overview",
+                           "extra-sales"):
             data = func(month) if month else func("")
         # Reports that take (date) — date-based
         elif report_name in ("cash-buckets", "daily-stock"):
@@ -1258,6 +1326,18 @@ def universal_report_export(report_name: str, request: Request) -> Any:
         return _generate_excel(report_name, data, filename)
 
 
+def _kpi_label(key: str) -> str:
+    """v8.18.14: human-friendly label for a KPI key — consults _PRETTY_COLUMNS
+    (single source of truth shared with table headers) and falls back to
+    title-casing. Used by _flatten_dict and _extract_kpi_groups so exported
+    PDFs/Excel/CSV show 'Extra Sales Income (Non-POS)' instead of raw keys
+    like 'extra_sales_income' — differentiating non-POS income from POS
+    sales in every export."""
+    if key in _PRETTY_COLUMNS:
+        return _PRETTY_COLUMNS[key]
+    return str(key).replace('_', ' ').title()
+
+
 def _flatten_dict(d: dict, prefix: str = "", out: list = None, max_depth: int = 3) -> list:
     """Recursively flatten a nested dict into a list of (label, value) tuples.
 
@@ -1272,7 +1352,7 @@ def _flatten_dict(d: dict, prefix: str = "", out: list = None, max_depth: int = 
     for k, v in d.items():
         if v is None or v == "":
             continue
-        label = (prefix + " — " if prefix else "") + str(k).replace('_', ' ').title()
+        label = (prefix + " — " if prefix else "") + _kpi_label(str(k))
         if isinstance(v, dict):
             _flatten_dict(v, label, out, max_depth - 1)
         elif isinstance(v, list):
@@ -1306,13 +1386,13 @@ def _extract_kpi_groups(data: dict) -> list:
         if val is None or val == "":
             continue
         if isinstance(val, bool):
-            flat_kpis.append((str(key).replace('_', ' ').title(),
+            flat_kpis.append((_kpi_label(str(key)),
                               "Yes" if val else "No"))
         elif isinstance(val, (int, float, str)):
-            flat_kpis.append((str(key).replace('_', ' ').title(), val))
+            flat_kpis.append((_kpi_label(str(key)), val))
         elif isinstance(val, dict):
             # Recursively flatten this section
-            section_name = str(key).replace('_', ' ').title()
+            section_name = _kpi_label(str(key))
             section_kpis = _flatten_dict(val, "", [], max_depth=3)
             if section_kpis:
                 groups.append((section_name, section_kpis))
@@ -1381,6 +1461,16 @@ _PRETTY_COLUMNS = {
     "markup_pct": "Markup %",
     "current_markup_pct": "Curr. Markup %",
     "margin_per_unit": "Margin/Unit",
+    # v8.18.14: Extra (non-POS) Sales fields — every appearance of these
+    # keys in KPI sections or table columns gets an explicit "(Non-POS)"
+    # tag so non-POS income is always differentiable from POS sales.
+    "extra_sales_income": "Extra Sales Income (Non-POS)",
+    "extra_sales_total": "Extra Sales Total (Non-POS)",
+    "extra_sales_count": "Extra Sales Entries",
+    "extra_sales_cash": "Extra Sales — Cash (Non-POS)",
+    "extra_sales_other": "Extra Sales — Bank/Card (Non-POS)",
+    "ytd_extra_sales_income": "YTD Extra Sales Income (Non-POS)",
+    "other_income": "Other Income (Extra Sales, Non-POS)",
 }
 
 

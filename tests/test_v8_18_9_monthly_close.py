@@ -99,14 +99,20 @@ def test_ui_fields_present_and_nonzero():
 
 def test_details_contract():
     """details: numbers are money, strings are labels — the UI renders
-    numbers with fmtRs and strings verbatim."""
+    numbers with fmtRs and strings verbatim.
+
+    v8.18.14: labels updated — net profit now INCLUDES extra (non-POS)
+    sales income, and a dedicated Extra Sales row keeps that income
+    differentiable from POS revenue.
+    """
     test_dir = setup_test_db()
     try:
         from app.insights import monthly_close
         d = monthly_close(2026, 8)["details"]
         assert isinstance(d["POS Sales (invoices)"], str), "counts must be strings"
         assert isinstance(d["Sales Revenue (net of discounts)"], (int, float))
-        assert isinstance(d["Net Profit (gross − op. expenses)"], (int, float))
+        assert isinstance(d["Net Profit (gross + extra sales − op. expenses)"], (int, float))
+        assert "Extra Sales (non-POS" in " \n".join(d), "extra sales row missing from details"
         # money numbers, not strings of digits
         for v in d.values():
             if isinstance(v, (int, float)):
@@ -216,6 +222,7 @@ def test_js_reads_only_real_fields():
     import re
     referenced = set(re.findall(r"r\.([a-z_]+)", block))
     # Whitelist of fields the API returns (or intentionally-safe reads)
+    # v8.18.14: extra_sales_income / extra_sales_count are real API fields now
     allowed = {
         "sales_count", "total_revenue", "net_profit", "total_profit",
         "bills_count", "total_bills", "gross_profit", "operating_expenses",
@@ -223,6 +230,7 @@ def test_js_reads_only_real_fields():
         "discounts_given", "cost_of_goods", "owner_draws", "total_spent",
         "total_paid", "total_credit", "supplier_count", "suppliers",
         "sales_by_category", "details", "audit",
+        "extra_sales_income", "extra_sales_count",  # v8.18.14
     }
     unknown = referenced - allowed
     assert not unknown, f"JS reads fields the API does not return: {unknown}"

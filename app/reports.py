@@ -451,13 +451,27 @@ def profit_analysis_report(start: str, end: str, group_by: str = "category") -> 
                 (start, end),
             ).fetchall()
             exp_map = {r["month"]: float(r["operating_expenses"] or 0) for r in exp_rows}
+            # v8.18.14: extra (non-POS) sales income per month — other
+            # income with no COGS. Own column, never merged into POS
+            # revenue, so the two income streams stay differentiable.
+            try:
+                extra_rows = {r["month"]: float(r["v"] or 0) for r in c.execute(
+                    "SELECT strftime('%Y-%m', sale_date) AS month, "
+                    "COALESCE(SUM(total), 0) AS v FROM extra_sales "
+                    "WHERE sale_date >= ? AND sale_date <= ? GROUP BY 1",
+                    (start, end)).fetchall()}
+            except Exception:
+                extra_rows = {}  # table not migrated yet
             months = []
+            seen_months = set()
             for r in rows:
                 rev = float(r["revenue"] or 0)
                 cogs = float(r["cogs"] or 0)
                 gp = float(r["gross_profit"] or 0)
                 op_exp = exp_map.get(r["month"], 0)
-                op_profit = gp - op_exp
+                m_extra = extra_rows.get(r["month"], 0.0)
+                # v8.18.14: operating profit includes extra-sales income
+                op_profit = gp + m_extra - op_exp
                 margin = round((gp / rev) * 100, 2) if rev > 0 else 0
                 months.append({
                     "month": r["month"],
@@ -467,12 +481,28 @@ def profit_analysis_report(start: str, end: str, group_by: str = "category") -> 
                     "margin_pct": margin,
                     "qty_sold": int(r["qty_sold"] or 0),
                     "operating_expenses": round(op_exp, 2),
+                    # v8.18.14: non-POS income — own column
+                    "extra_sales_income": round(m_extra, 2),
                     "operating_profit": round(op_profit, 2),
                 })
+                seen_months.add(r["month"])
+            # v8.18.14: months with ONLY extra sales (no POS sales) still get
+            # a row — otherwise income would silently vanish from the table
+            for m_key in sorted(set(extra_rows) - seen_months):
+                op_exp = exp_map.get(m_key, 0)
+                m_extra = extra_rows.get(m_key, 0.0)
+                months.append({
+                    "month": m_key, "revenue": 0.0, "cogs": 0.0, "gross_profit": 0.0,
+                    "margin_pct": 0, "qty_sold": 0, "operating_expenses": round(op_exp, 2),
+                    "extra_sales_income": round(m_extra, 2),
+                    "operating_profit": round(m_extra - op_exp, 2),
+                })
+            months.sort(key=lambda m: m["month"])
             total_rev = sum(m["revenue"] for m in months)
             total_cogs = sum(m["cogs"] for m in months)
             total_gp = sum(m["gross_profit"] for m in months)
             total_op_exp = sum(m["operating_expenses"] for m in months)
+            total_extra = sum(m["extra_sales_income"] for m in months)
             total_op_profit = sum(m["operating_profit"] for m in months)
             result["months"] = months
             result["totals"] = {
@@ -482,6 +512,8 @@ def profit_analysis_report(start: str, end: str, group_by: str = "category") -> 
                 "margin_pct": round((total_gp / total_rev) * 100, 2) if total_rev > 0 else 0,
                 "qty_sold": sum(m["qty_sold"] for m in months),
                 "operating_expenses": round(total_op_exp, 2),
+                # v8.18.14: non-POS income total (own line)
+                "extra_sales_income": round(total_extra, 2),
                 "operating_profit": round(total_op_profit, 2),
             }
         else:
@@ -594,12 +626,28 @@ def profit_analysis_report(start: str, end: str, group_by: str = "category") -> 
             total_gp = sum(cat["gross_profit"] for cat in categories)
             total_qty = sum(cat["qty_sold"] for cat in categories)
             result["categories"] = categories
+            # v8.18.14: extra (non-POS) sales income for the range — cartons,
+            # raddi/scrap etc. Reported as its OWN top-level total, NOT mixed
+            # into any category row: extra sales have no category and no
+            # COGS, so folding them into the category table would silently
+            # distort category margins. The UI + exports show it as a
+            # separate, clearly-labeled line.
+            try:
+                extra_income = float(c.execute(
+                    "SELECT COALESCE(SUM(total), 0) AS v FROM extra_sales "
+                    "WHERE sale_date >= ? AND sale_date <= ?",
+                    (start, end)).fetchone()["v"] or 0)
+            except Exception:
+                extra_income = 0.0  # table not migrated yet
+            result["extra_sales_income"] = round(extra_income, 2)
             result["totals"] = {
                 "revenue": round(total_rev, 2),
                 "cogs": round(total_cogs, 2),
                 "gross_profit": round(total_gp, 2),
                 "margin_pct": round((total_gp / total_rev) * 100, 2) if total_rev > 0 else 0,
                 "qty_sold": total_qty,
+                # v8.18.14: non-POS income total (own line, excluded from margin)
+                "extra_sales_income": round(extra_income, 2),
             }
     return result
 

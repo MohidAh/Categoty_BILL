@@ -111,18 +111,51 @@ def get_monthly_profit(month: str = "") -> dict:
         owner_draws = c.execute(
             "SELECT COALESCE(SUM(amount), 0) AS v FROM expenses "
             "WHERE strftime('%Y-%m', date)=? AND expense_type='owner_draw'", (month,)).fetchone()["v"]
+        # v8.18.14: extra (non-POS) sales income for the month — cartons,
+        # raddi/scrap etc. Pure income, no COGS, NOT part of `sales`.
+        extra_income = _extra_sales_total(c, month, "", "")
     sales = float(sales or 0); cogs = float(cogs); cogs_from_sales = float(cogs_from_sales or 0)
     gross_profit = sales - cogs
     monthly_margin = (gross_profit / sales * 100) if sales > 0 else 0.0
-    operating_profit = gross_profit - float(op_exp or 0)
+    # v8.18.14: operating profit now includes extra-sales income
+    # (gross profit + other income - operating expenses), consistent with
+    # get_pnl()/get_actual_earnings(). Extra sales stay a SEPARATE line so
+    # they are differentiable from POS sales in every report.
+    operating_profit = gross_profit + extra_income - float(op_exp or 0)
     return {"month": month, "opening_inventory": round(opening_inventory, 2),
             "purchases": round(float(purchases or 0), 2), "closing_inventory": round(closing_inventory, 2),
             "cogs": round(cogs, 2), "cogs_from_sales": round(cogs_from_sales, 2),
             "cogs_difference": round(cogs - cogs_from_sales, 2), "sales": round(sales, 2),
             "gross_profit": round(gross_profit, 2), "monthly_margin": round(monthly_margin, 2),
+            # v8.18.14: extra (non-POS) sales income — own line, added to operating profit
+            "extra_sales_income": round(extra_income, 2),
             "operating_expenses": round(float(op_exp or 0), 2), "owner_draws": round(float(owner_draws or 0), 2),
             "operating_profit": round(operating_profit, 2),
-            "note": "COGS = Opening + Purchases - Closing (includes stock adjustments). GP and Operating Profit shown separately. Bridge COGS and cogs_from_sales should match within rounding in the absence of stock adjustments; with adjustments they diverge by the adjustment cost impact."}
+            "note": "COGS = Opening + Purchases - Closing (includes stock adjustments). GP and Operating Profit shown separately. Extra Sales (non-POS: cartons, raddi) are other income with no COGS and are added to Operating Profit. Bridge COGS and cogs_from_sales should match within rounding in the absence of stock adjustments; with adjustments they diverge by the adjustment cost impact."}
+
+
+def _extra_sales_total(c, month: str = "", start: str = "", end: str = "") -> float:
+    """Extra (non-POS) sales income. Takes an open cursor.
+
+    v8.18.14: shared by get_monthly_profit/get_ytd_profit/
+    get_store_profit_dashboard. Falls back to 0 when the extra_sales
+    table hasn't been migrated yet (first boot on a legacy DB).
+    """
+    try:
+        if month:
+            v = c.execute(
+                "SELECT COALESCE(SUM(total), 0) AS v FROM extra_sales "
+                "WHERE strftime('%Y-%m', sale_date)=?", (month,)).fetchone()["v"]
+        elif start or end:
+            v = c.execute(
+                "SELECT COALESCE(SUM(total), 0) AS v FROM extra_sales "
+                "WHERE sale_date >= ? AND sale_date <= ?",
+                (start or "0000-01-01", end or "9999-12-31")).fetchone()["v"]
+        else:
+            v = 0
+    except Exception:
+        v = 0
+    return float(v or 0)
 
 
 def get_ytd_profit() -> dict:
@@ -153,24 +186,51 @@ def get_ytd_profit() -> dict:
             "SELECT COALESCE(SUM(amount), 0) AS v FROM expenses "
             "WHERE expense_type='operating' AND date(date) >= ? AND date(date) <= ?",
             (opening_date, today)).fetchone()["v"]
+        # v8.18.14: extra (non-POS) sales income — YTD total + per-month rows.
+        # Keep separate from `sales` so it stays differentiable.
+        ytd_extra = _extra_sales_total(c, "", opening_date, today)
+        extra_rows = {}
+        try:
+            for r in c.execute(
+                "SELECT strftime('%Y-%m', sale_date) AS month, "
+                "COALESCE(SUM(total), 0) AS v FROM extra_sales "
+                "WHERE sale_date >= ? AND sale_date <= ? GROUP BY 1",
+                (opening_date, today)).fetchall():
+                extra_rows[r["month"]] = float(r["v"] or 0)
+        except Exception:
+            pass  # table not migrated yet
     ytd_sales = float(totals["ytd_sales"] or 0); ytd_cogs = float(totals["ytd_cogs"] or 0)
     ytd_gp = ytd_sales - ytd_cogs
     ytd_margin = (ytd_gp / ytd_sales * 100) if ytd_sales > 0 else 0.0
-    ytd_op_profit = ytd_gp - float(op_exp_ytd or 0)
+    # v8.18.14: YTD operating profit includes extra-sales (other) income
+    ytd_op_profit = ytd_gp + ytd_extra - float(op_exp_ytd or 0)
     monthly = []
     for r in monthly_rows:
         m_sales = float(r["sales"] or 0); m_cogs = float(r["cogs"] or 0); m_gp = m_sales - m_cogs
         m_margin = (m_gp / m_sales * 100) if m_sales > 0 else 0.0
+        m_extra = extra_rows.get(r["month"], 0.0)
         monthly.append({"month": r["month"], "sales": round(m_sales, 2), "cogs": round(m_cogs, 2),
-                        "gross_profit": round(m_gp, 2), "margin_pct": round(m_margin, 2)})
+                        "gross_profit": round(m_gp, 2), "margin_pct": round(m_margin, 2),
+                        # v8.18.14: non-POS income for that month (own column)
+                        "extra_sales_income": round(m_extra, 2)})
+        extra_rows.pop(r["month"], None)
+    # v8.18.14: months with ONLY extra sales (no POS sales) still get a row
+    # so the income is visible in the YTD monthly trend + chart
+    for m_key in sorted(extra_rows):
+        monthly.append({"month": m_key, "sales": 0.0, "cogs": 0.0,
+                        "gross_profit": 0.0, "margin_pct": 0.0,
+                        "extra_sales_income": round(extra_rows[m_key], 2)})
+    monthly.sort(key=lambda m: m["month"])
     avg_of_monthly_margins = round(sum(m["margin_pct"] for m in monthly) / len(monthly), 2) if monthly else 0.0
     return {"opening_date": opening_date, "today": today, "ytd_sales": round(ytd_sales, 2),
             "ytd_cogs": round(ytd_cogs, 2), "ytd_gross_profit": round(ytd_gp, 2),
             "ytd_margin": round(ytd_margin, 2), "ytd_operating_expenses": round(float(op_exp_ytd or 0), 2),
+            # v8.18.14: extra (non-POS) sales income — own line, included in operating profit
+            "ytd_extra_sales_income": round(ytd_extra, 2),
             "ytd_operating_profit": round(ytd_op_profit, 2), "monthly": monthly,
             "avg_of_monthly_margins": avg_of_monthly_margins,
             "method_difference": round(ytd_margin - avg_of_monthly_margins, 2),
-            "note": "YTD margin = Cumulative GP / Cumulative Sales (NOT avg of monthly margins)."}
+            "note": "YTD margin = Cumulative GP / Cumulative Sales (NOT avg of monthly margins). Extra Sales (non-POS) income is included in YTD Operating Profit but NOT in sales/margin (no COGS)."}
 
 
 def get_store_profit_dashboard() -> dict:
@@ -248,9 +308,14 @@ def get_store_profit_dashboard() -> dict:
             "monthly": {"sales": monthly["sales"], "cogs": monthly["cogs"],
                         "gross_profit": monthly["gross_profit"], "monthly_margin": monthly["monthly_margin"],
                         "operating_expenses": monthly["operating_expenses"],
+                        # v8.18.14: non-POS income — own line, inside operating profit
+                        "extra_sales_income": monthly["extra_sales_income"],
                         "operating_profit": monthly["operating_profit"]},
             "ytd": {"sales": ytd["ytd_sales"], "cogs": ytd["ytd_cogs"],
                     "gross_profit": ytd["ytd_gross_profit"], "ytd_margin": ytd["ytd_margin"],
+                    # v8.18.14: non-POS income YTD + operating profit (now includes it)
+                    "ytd_extra_sales_income": ytd["ytd_extra_sales_income"],
+                    "ytd_operating_profit": ytd["ytd_operating_profit"],
                     "opening_date": ytd["opening_date"]},
             "cash": {"buckets": cash_buckets["buckets"], "cash_in_drawer": cash_buckets["cash_in_drawer"],
                      "available_for_withdrawal": cash_buckets["available_for_withdrawal"],

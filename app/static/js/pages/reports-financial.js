@@ -62,6 +62,8 @@ route('/reports/pnl', async (el) => {
       const cogs = r.cost_of_goods || 0;
       const expensesTotal = r.expenses || 0;
       const ownerDraws = r.owner_draws || 0;
+      // v8.18.13: extra (non-stock) sales — other income
+      const otherIncome = r.other_income || 0;
       const grossProfit = r.gross_profit || 0;
       const netProfit = r.net_profit || 0;
       const grossMarginPct = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
@@ -82,6 +84,7 @@ route('/reports/pnl', async (el) => {
             <div class="stat-list mt-3">
               <div class="stat-row"><span>Sales Revenue</span><span class="text-success">${fmtRs(revenue)}</span></div>
               <div class="stat-row"><span>Discounts Given</span><span class="text-warning">${fmtRs(r.discounts)}</span></div>
+              ${otherIncome > 0 ? `<div class="stat-row"><span>Other Income <span class="text-xs text-dim">(Extra Sales — cartons, raddi...)</span></span><span class="text-success">+ ${fmtRs(otherIncome)}</span></div>` : ''}
               <div class="stat-row" style="border-top:2px solid var(--border)"><span class="font-bold">Cost of Goods Sold</span><span class="font-bold">${fmtRs(cogs)}</span></div>
               <div class="stat-row"><span class="font-bold">Gross Profit</span><span class="font-bold text-success">${fmtRs(grossProfit)}</span></div>
               <div class="stat-row"><span class="text-dim">Purchases (bills)</span><span class="text-dim">${fmtRs(r.purchases || 0)}</span></div>
@@ -145,6 +148,8 @@ route('/reports/cash-flow', async (el) => {
               <div class="stat-row"><span>Split (cash portion)</span><span class="text-success">${fmtRs(r.inflows.split_cash)}</span></div>
               <div class="stat-row"><span>Card Sales</span><span>${fmtRs(r.inflows.card_sales)}</span></div>
               <div class="stat-row"><span>Online Sales</span><span>${fmtRs(r.inflows.online_sales)}</span></div>
+              ${(r.inflows.extra_sales_cash || 0) > 0 ? `<div class="stat-row"><span>Extra Sales (cash) <span class="text-xs text-dim">(cartons, raddi...)</span></span><span class="text-success">${fmtRs(r.inflows.extra_sales_cash)}</span></div>` : ''}
+              ${(r.inflows.extra_sales_other || 0) > 0 ? `<div class="stat-row"><span>Extra Sales (bank/card)</span><span>${fmtRs(r.inflows.extra_sales_other)}</span></div>` : ''}
               <div class="stat-row"><span>Credit Payments Received</span><span class="text-success">${fmtRs(r.inflows.customer_payments)}</span></div>
               <div class="stat-row" style="border-top:2px solid var(--border)"><span class="font-bold">Total Cash In</span><span class="font-bold text-success">${fmtRs(r.inflows.total_in)}</span></div>
             </div>

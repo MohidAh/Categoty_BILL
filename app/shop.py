@@ -922,12 +922,20 @@ def get_daily_summary(date: str = None) -> dict:
             "ORDER BY s.id DESC",
             (date,),
         ).fetchall()
+        # v8.18.13: extra (non-stock) sales today
+        extra = c.execute(
+            "SELECT COALESCE(SUM(total), 0) v, COUNT(*) n FROM extra_sales "
+            "WHERE date(sale_date)=?",
+            (date,),
+        ).fetchone()
     return {
         "date": date,
         "sales_total": round(float(sales["v"] or 0), 2),
         "cash_sales": round(float(cash_sales["v"] or 0), 2),
         "credit_sales": round(float(credit_sales["v"] or 0), 2),
         "sale_count": sale_count,
+        "extra_sales_total": round(float(extra["v"] or 0), 2),
+        "extra_sales_count": int(extra["n"] or 0),
         "top_categories": [
             {"code": r["category_code"], "revenue": round(float(r["revenue"] or 0), 2),
              "qty": int(r["qty"] or 0)}
@@ -952,6 +960,12 @@ def build_daily_summary_text(date: str = None) -> str:
     lines.append(f"   Cash: Rs {s['cash_sales']:,.0f}")
     if s["credit_sales"] > 0:
         lines.append(f"   Credit: Rs {s['credit_sales']:,.0f}")
+    # v8.18.13: extra (non-stock) sales — raddi, cartons etc.
+    if s.get("extra_sales_total", 0) > 0:
+        lines.append(
+            f"♻️ Extra Sales (non-stock): Rs {s['extra_sales_total']:,.0f} "
+            f"({s.get('extra_sales_count', 0)} entries)"
+        )
     if s["top_categories"]:
         lines.append("")
         lines.append("📈 Top Categories:")
@@ -1283,8 +1297,13 @@ def add_employee(name: str, phone: str = "", role: str = "cashier") -> int:
 
 
 def update_employee(employee_id: int, name: str = None, phone: str = None,
-                    role: str = None, active: int = None) -> bool:
-    """Update employee fields. Returns True if updated."""
+                    role: str = None, active: int = None,
+                    monthly_salary: float = None) -> bool:
+    """Update employee fields. Returns True if updated.
+
+    v8.18.13: monthly_salary — the employee's fixed monthly salary. Changing
+    it re-syncs their DRAFT salary records (paid ones keep the snapshot).
+    """
     fields = []
     values = []
     if name is not None and name.strip():
@@ -1299,12 +1318,32 @@ def update_employee(employee_id: int, name: str = None, phone: str = None,
     if active is not None:
         fields.append("active = ?")
         values.append(1 if active else 0)
+    if monthly_salary is not None:
+        salary = float(monthly_salary)
+        if salary < 0:
+            salary = 0.0
+        fields.append("monthly_salary = ?")
+        values.append(salary)
     if not fields:
         return False
     values.append(employee_id)
     with conn() as c:
         cur = c.execute(f"UPDATE employees SET {', '.join(fields)} WHERE id = ?", values)
-        return cur.rowcount > 0
+        updated = cur.rowcount > 0
+        # v8.18.13: keep draft salary records in sync with the new salary
+        if updated and monthly_salary is not None:
+            from . import salary as _salary_mod
+            _draft_ids = [r["id"] for r in c.execute(
+                "SELECT id FROM salary_records WHERE employee_id=? AND status='draft'",
+                (employee_id,),
+            ).fetchall()]
+            for _rid in _draft_ids:
+                c.execute(
+                    "UPDATE salary_records SET monthly_salary=? WHERE id=?",
+                    (float(monthly_salary), _rid),
+                )
+                _salary_mod._recompute_record(c, _rid)
+        return updated
 
 
 def delete_employee(employee_id: int) -> bool:
@@ -1706,6 +1745,8 @@ def get_pnl(month: str = "") -> dict:
             "ORDER BY total DESC",
             (month,),
         ).fetchall()
+        # v8.18.13: extra (non-stock) sales — other income, no COGS
+        extra_income = _extra_sales_month_total(c, month)
 
     revenue = sales["revenue"] or 0
     discounts = sales["discounts"] or 0
@@ -1714,7 +1755,8 @@ def get_pnl(month: str = "") -> dict:
     gross_profit = net_revenue - cost
     expense_total = expenses["total"] or 0
     owner_draw_total = owner_draws["total"] or 0
-    net_profit = gross_profit - expense_total
+    # v8.18.13: net profit = gross profit + other income - operating expenses
+    net_profit = gross_profit + extra_income - expense_total
 
     return {
         "month": month,
@@ -1726,6 +1768,8 @@ def get_pnl(month: str = "") -> dict:
         "gross_margin": round(gross_profit / net_revenue, 2) if net_revenue > 0 else 0,
         "expenses": round(expense_total, 2),
         "owner_draws": round(owner_draw_total, 2),
+        # v8.18.13: extra (non-stock) sales income — added to net profit
+        "other_income": round(extra_income, 2),
         "net_profit": round(net_profit, 2),
         "net_margin": round(net_profit / net_revenue, 2) if net_revenue > 0 else 0,
         "purchases": round(purchases["total"] or 0, 2),
@@ -1768,16 +1812,22 @@ def get_actual_earnings(month: str = "") -> dict:
         purchases_data = _earnings_purchases(c, month)
         cash_reality = _earnings_cash_reality(c)
         comparison = _earnings_comparison(c, last_month)
+        # v8.18.13: extra (non-stock) sales — other income, no COGS
+        extra_income = _extra_sales_month_total(c, month)
 
     # Compute derived metrics
     total_sales = sales_data["revenue"]
     cost = sales_data["cogs"]
     gross_profit = total_sales - cost
     op_exp = expenses_data["operating"]
-    actual_earnings = gross_profit - op_exp
+    # v8.18.13: actual earnings = gross profit + other income - operating expenses
+    actual_earnings = gross_profit + extra_income - op_exp
     net_margin = (actual_earnings / total_sales) if total_sales > 0 else 0
 
-    last_month_earnings = comparison["last_sales"] - comparison["last_cogs"] - comparison["last_exp"]
+    last_month_earnings = (
+        comparison["last_sales"] - comparison["last_cogs"]
+        - comparison["last_exp"] + comparison.get("last_extra_sales", 0)
+    )
     delta_pct = 0.0
     if last_month_earnings > 0:
         delta_pct = round(100 * (actual_earnings - last_month_earnings) / last_month_earnings, 1)
@@ -1788,6 +1838,8 @@ def get_actual_earnings(month: str = "") -> dict:
         "cogs": round(cost, 2),
         "gross_profit": round(gross_profit, 2),
         "operating_expenses": round(op_exp, 2),
+        # v8.18.13: extra (non-stock) sales income — added to actual earnings
+        "extra_sales_income": round(extra_income, 2),
         "actual_earnings": round(actual_earnings, 2),
         "net_margin": round(net_margin, 2),
         "owner_draws": round(expenses_data["owner_draws"], 2),
@@ -1918,7 +1970,11 @@ def _earnings_cash_reality(c) -> dict:
 
 
 def _earnings_comparison(c, last_month: str) -> dict:
-    """Last month's sales + cogs + expenses for delta comparison. v8.14.0: extracted."""
+    """Last month's sales + cogs + expenses for delta comparison. v8.14.0: extracted.
+
+    v8.18.13: also returns last month's extra-sales income so the MoM delta
+    compares like-for-like (actual earnings includes other income now).
+    """
     last_sales = c.execute(
         "SELECT COALESCE(SUM(total), 0) AS v FROM sales "
         f"WHERE strftime('%Y-%m', created_at)=? AND {db.VALID_SALE_FILTER_NO_ALIAS}",
@@ -1935,11 +1991,147 @@ def _earnings_comparison(c, last_month: str) -> dict:
         "WHERE strftime('%Y-%m', date)=? AND expense_type='operating'",
         (last_month,),
     ).fetchone()["v"]
+    last_extra = c.execute(
+        "SELECT COALESCE(SUM(total), 0) AS v FROM extra_sales "
+        "WHERE strftime('%Y-%m', sale_date)=?",
+        (last_month,),
+    ).fetchone()["v"]
     return {
         "last_sales": float(last_sales or 0),
         "last_cogs": float(last_cogs or 0),
         "last_exp": float(last_exp or 0),
+        "last_extra_sales": float(last_extra or 0),
     }
+
+
+# ---------- v8.18.13: Extra (non-stock) Sales ----------
+
+def add_extra_sale(item_name: str, quantity: float = 1, unit_price: float = 0,
+                   description: str = "", payment_method: str = "cash",
+                   date_str: str = None) -> int:
+    """Record a sale made OUTSIDE the POS (scrap/raddi, empty cartons, drums...).
+
+    These are not stock products: no inventory movement, no COGS — pure other
+    income. Cash sales credit the cash drawer so the drawer balance and the
+    Cash Reality panel stay truthful.
+    """
+    if not item_name or not item_name.strip():
+        raise ValueError("item_name is required")
+    quantity = float(quantity or 0)
+    unit_price = float(unit_price or 0)
+    if quantity <= 0:
+        raise ValueError("quantity must be > 0")
+    if unit_price < 0:
+        raise ValueError("unit_price cannot be negative")
+    total = round(quantity * unit_price, 2)
+    if total <= 0:
+        raise ValueError("total must be > 0 (quantity x unit price)")
+    if payment_method not in ("cash", "bank", "card", "online"):
+        payment_method = "cash"
+    if date_str is None:
+        date_str = datetime.now().strftime("%Y-%m-%d")
+    with conn() as c:
+        sid = c.execute(
+            "INSERT INTO extra_sales(item_name, description, quantity, unit_price, "
+            "total, payment_method, sale_date) VALUES(?,?,?,?,?,?,?)",
+            (item_name.strip(), description, quantity, unit_price, total,
+             payment_method, date_str),
+        ).lastrowid
+        if payment_method == "cash":
+            c.execute(
+                "INSERT INTO cash_drawer(type, amount, description, reference_id, reference_type) "
+                "VALUES('extra_sale', ?, ?, ?, 'extra_sale')",
+                (total, f"Extra sale: {item_name.strip()}", sid),
+            )
+    return sid
+
+
+def list_extra_sales(month: str = "", limit: int = 200, q: str = "") -> list:
+    """List extra sales, newest first. Optional month + free-text filter."""
+    limit = min(max(1, limit), 1000)
+    with conn() as c:
+        sql = "SELECT * FROM extra_sales WHERE 1=1"
+        args: list = []
+        if month:
+            sql += " AND strftime('%Y-%m', sale_date)=?"
+            args.append(month)
+        if q:
+            sql += " AND (item_name LIKE ? OR description LIKE ?)"
+            args += [f"%{q}%", f"%{q}%"]
+        sql += " ORDER BY sale_date DESC, id DESC LIMIT ?"
+        args.append(limit)
+        rows = c.execute(sql, args).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_extra_sale(sale_id: int) -> bool:
+    """Delete an extra sale + its linked cash drawer entry (if cash)."""
+    with conn() as c:
+        cur = c.execute("DELETE FROM extra_sales WHERE id=?", (sale_id,))
+        c.execute(
+            "DELETE FROM cash_drawer WHERE reference_type='extra_sale' AND reference_id=?",
+            (sale_id,),
+        )
+        return cur.rowcount > 0
+
+
+def get_extra_sales_summary(month: str = "") -> dict:
+    """Monthly summary for the Extra Sales page: total, count, MoM, top items."""
+    if not month:
+        month = datetime.now().strftime("%Y-%m")
+    try:
+        y, m = month.split("-")
+        y, m = int(y), int(m)
+        last_month = f"{y}-{m-1:02d}" if m > 1 else f"{y-1}-12"
+    except Exception:
+        last_month = month
+    with conn() as c:
+        total = c.execute(
+            "SELECT COALESCE(SUM(total), 0) v, COUNT(*) n, COALESCE(SUM(quantity), 0) qty "
+            "FROM extra_sales WHERE strftime('%Y-%m', sale_date)=?",
+            (month,),
+        ).fetchone()
+        last_total = c.execute(
+            "SELECT COALESCE(SUM(total), 0) v FROM extra_sales "
+            "WHERE strftime('%Y-%m', sale_date)=?",
+            (last_month,),
+        ).fetchone()["v"]
+        by_item = c.execute(
+            "SELECT item_name, SUM(total) AS total, SUM(quantity) AS qty, COUNT(*) AS times "
+            "FROM extra_sales WHERE strftime('%Y-%m', sale_date)=? "
+            "GROUP BY item_name ORDER BY total DESC LIMIT 10",
+            (month,),
+        ).fetchall()
+    cur_total = float(total["v"] or 0)
+    prev = float(last_total or 0)
+    delta_pct = round(100 * (cur_total - prev) / prev, 1) if prev > 0 else 0.0
+    return {
+        "month": month,
+        "last_month": last_month,
+        "month_total": round(cur_total, 2),
+        "entries": int(total["n"] or 0),
+        "total_qty": round(float(total["qty"] or 0), 2),
+        "last_month_total": round(prev, 2),
+        "delta_pct": delta_pct,
+        "by_item": [
+            {"item_name": r["item_name"], "total": round(float(r["total"] or 0), 2),
+             "qty": round(float(r["qty"] or 0), 2), "times": int(r["times"] or 0)}
+            for r in by_item
+        ],
+    }
+
+
+def _extra_sales_month_total(c, month: str) -> float:
+    """Total extra-sales income for a month (report helper, takes an open cursor)."""
+    try:
+        v = c.execute(
+            "SELECT COALESCE(SUM(total), 0) AS v FROM extra_sales "
+            "WHERE strftime('%Y-%m', sale_date)=?",
+            (month,),
+        ).fetchone()["v"]
+    except Exception:
+        v = 0  # table not yet migrated (first boot before init() reruns)
+    return float(v or 0)
 
 
 # ---------- Held Orders (park & recall) ----------

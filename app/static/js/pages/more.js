@@ -21,6 +21,16 @@ route('/more', async (el) => {
     </div>
 
     <div class="grid grid-3 mt-4">
+      <a href="#/bills/extra-sales" class="card more-card">
+        <div class="more-card-icon chip-success"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></div>
+        <h3>Extra Sales</h3>
+        <p class="text-dim text-sm">Sold something outside the POS — cartons, raddi/scrap, drums? Record it as other income</p>
+      </a>
+      <a href="#/bills/salary" class="card more-card">
+        <div class="more-card-icon chip-warning"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+        <h3>Staff Salary</h3>
+        <p class="text-dim text-sm">Payroll: fixed salaries, 4 paid off-days, extra working days, advances and payout</p>
+      </a>
       <a href="#/pos-import" class="card more-card">
         <div class="more-card-icon chip-success"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg></div>
         <h3>Import from Existing POS</h3>

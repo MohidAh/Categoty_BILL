@@ -20,6 +20,9 @@ const NAV_COMMANDS = [
   { type: 'nav', icon: 'reports', label: 'Reports', hint: 'View reports', path: '/reports', key: 'R' },
   { type: 'nav', icon: 'insights', label: 'Insights', hint: 'View AI insights', path: '/insights', key: 'I' },
   { type: 'nav', icon: 'settings', label: 'Settings', hint: 'Open settings', path: '/settings', key: ',' },
+  // v8.18.13: extra sales + staff salary
+  { type: 'nav', icon: 'store', label: 'Extra Sales', hint: 'Record non-POS sales (cartons, raddi/scrap)', path: '/bills/extra-sales', key: 'X' },
+  { type: 'nav', icon: 'suppliers', label: 'Staff Salary', hint: 'Payroll, off-days, advances, payout', path: '/bills/salary', key: 'L' },
   { type: 'action', icon: 'download', label: 'Export Bills (Excel)', hint: 'Download .xlsx', action: () => location.href = '/api/export/bills.xlsx' },
   { type: 'action', icon: 'download', label: 'Export Insights (Excel)', hint: 'Download .xlsx', action: () => location.href = '/api/export/insights.xlsx' },
   { type: 'action', icon: 'download', label: 'Export Bills (CSV)', hint: 'Download .csv', action: () => location.href = '/api/export.csv' },

@@ -602,8 +602,26 @@ CREATE TABLE IF NOT EXISTS employees (
   phone TEXT,
   role TEXT DEFAULT 'cashier',
   active INTEGER DEFAULT 1,
+  monthly_salary REAL DEFAULT 0,   -- v8.18.13: fixed monthly salary (staff salary management)
   created_at TEXT DEFAULT (datetime('now','localtime'))
 );
+
+-- v8.18.13: Extra (non-stock) sales — items sold OUTSIDE the POS that are
+-- not inventory products (cardboard cartons, scrap/raddi, empty drums,
+-- packing material sold on...). Pure other income: no stock movement, no COGS.
+CREATE TABLE IF NOT EXISTS extra_sales (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  item_name TEXT NOT NULL,
+  description TEXT DEFAULT '',
+  quantity REAL DEFAULT 1,
+  unit_price REAL DEFAULT 0,
+  total REAL NOT NULL,
+  payment_method TEXT DEFAULT 'cash',
+  sale_date TEXT,
+  created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_extra_sales_date ON extra_sales(sale_date);
 
 CREATE TABLE IF NOT EXISTS shifts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -616,6 +634,48 @@ CREATE TABLE IF NOT EXISTS shifts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_shifts_status ON shifts(status);
+
+-- v8.18.13: Staff salary management. One record per employee per month.
+-- The record's full cost (monthly salary + extra-working-day pay) is posted
+-- as ONE operating expense under the 'Salaries' category (linked via
+-- expense_id, kept in sync on every recompute), so salary is automatically
+-- deducted from Gross Profit in Actual Earnings / P&L net profit.
+-- Advances are cash PREPAYMENTS, not expenses — they leave the drawer when
+-- given and reduce the final cash payment at month end (no double counting).
+CREATE TABLE IF NOT EXISTS salary_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+  month TEXT NOT NULL,                  -- 'YYYY-MM'
+  monthly_salary REAL NOT NULL DEFAULT 0,
+  allowed_off_days INTEGER DEFAULT 4,   -- paid off-days allowed per month
+  off_days_taken INTEGER DEFAULT 0,
+  per_day_rate REAL DEFAULT 0,          -- monthly_salary / 30
+  extra_working_days INTEGER DEFAULT 0, -- max(0, allowed - taken)
+  extra_day_pay REAL DEFAULT 0,         -- extra_days * per_day_rate
+  advances_total REAL DEFAULT 0,        -- advances taken THIS month
+  final_payable REAL DEFAULT 0,         -- salary + extra_day_pay - advances
+  status TEXT DEFAULT 'draft',          -- 'draft' | 'paid'
+  payment_method TEXT DEFAULT 'cash',
+  paid_date TEXT,
+  expense_id INTEGER,                   -- linked operating expense row
+  notes TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now','localtime')),
+  UNIQUE(employee_id, month)
+);
+
+CREATE INDEX IF NOT EXISTS idx_salary_records_month ON salary_records(month);
+
+-- v8.18.13: Salary advances (cash given to staff before month-end payout)
+CREATE TABLE IF NOT EXISTS salary_advances (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+  amount REAL NOT NULL,
+  date TEXT,
+  description TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now','localtime'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_salary_advances_employee ON salary_advances(employee_id);
 
 -- Held (parked) POS orders — saved mid-sale to recall later
 CREATE TABLE IF NOT EXISTS held_orders (
@@ -907,6 +967,10 @@ def init():
         emp_cols = {r["name"] for r in c.execute("PRAGMA table_info(employees)").fetchall()}
         if "pin" not in emp_cols:
             c.execute("ALTER TABLE employees ADD COLUMN pin TEXT")
+        # v8.18.13: employees.monthly_salary — staff salary management
+        emp_cols = {r["name"] for r in c.execute("PRAGMA table_info(employees)").fetchall()}
+        if "monthly_salary" not in emp_cols:
+            c.execute("ALTER TABLE employees ADD COLUMN monthly_salary REAL DEFAULT 0")
         # PR 7a: employees.pin_hash — bcrypt hash of the PIN (replaces plaintext pin).
         # The pin column is kept for backward-compat during migration; new writes
         # go to pin_hash. verify_manager_pin checks pin_hash first, falls back to

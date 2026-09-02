@@ -95,7 +95,8 @@ def sample_db(tmp_db_path):
                   "stock_adjustments", "activity_log", "sessions",
                   "expenses", "expense_categories", "recurring_expenses",
                   "cash_drawer", "shifts", "employees",
-                  "owner_withdrawals", "capital_injections", "stock_writeoffs"):
+                  "owner_withdrawals", "capital_injections", "stock_writeoffs",
+                  "extra_sales", "salary_records", "salary_advances"):  # v8.18.13
             try:
                 c.execute(f"DELETE FROM {t}")
             except Exception:
@@ -231,6 +232,7 @@ _CLEAR_TABLES = (
     "price_pushes", "branch_summaries",
     "audit_findings", "audit_runs",
     "ai_usage",
+    "extra_sales", "salary_records", "salary_advances",  # v8.18.13
 )
 
 

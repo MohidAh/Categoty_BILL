@@ -20,6 +20,9 @@ import './pages/supplier-detail.js';
 import './pages/reports-pages.js';
 import './pages/reports-financial.js';
 import './pages/expenses-page.js';
+// v8.18.13: extra (non-stock) sales + staff salary management
+import './pages/extra-sales-page.js';
+import './pages/salary-page.js';
 import './pages/actual-earnings-page.js';
 import './pages/cash-controls-pages.js';
 import './pages/margins-page.js';

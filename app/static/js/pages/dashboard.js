@@ -283,7 +283,7 @@ function renderDashboard(d) {
         <button class="btn" onclick="location.hash='/bills/new'">${icon('upload', 14)} Upload Bill</button>
         <button class="btn btn-secondary" onclick="location.hash='/items'">${icon('search', 14)} Search Items</button>
         <button class="btn btn-secondary" onclick="location.href='/api/export/bills.xlsx'">${icon('download', 14)} Export</button>
-        <button class="btn btn-secondary" onclick="location.href='/api/reports/monthly-close.pdf?year=${new Date().getFullYear()}&month=${String(new Date().getMonth()).padStart(2,'0')}'">${icon('download', 14)} Monthly PDF</button>
+        <button class="btn btn-secondary" onclick="location.href='/api/reports/monthly-close.pdf?year=${new Date().getFullYear()}&month=${String(new Date().getMonth() + 1).padStart(2,'0')}'">${icon('download', 14)} Monthly PDF</button>
       </div>
       ${k.review > 0 ? `<div class="alert alert-warning mt-4">${iconHtml('alert', 'alert-icon')}<div><strong>${k.review} bill${k.review > 1 ? 's' : ''} need review</strong> — <a href="#/bills?status=review">review now →</a></div></div>` : ''}
     </div>`;

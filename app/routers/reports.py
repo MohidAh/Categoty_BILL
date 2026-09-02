@@ -1194,9 +1194,19 @@ def universal_report_export(report_name: str, request: Request) -> Any:
             alerts_list = func(200)
             data = {"alerts": alerts_list, "count": len(alerts_list) if alerts_list else 0}
         elif report_name == "monthly-close":
-            # Need year + month; default to current period
-            y = int(year_param) if year_param else now.year
-            m = int(month) if month else now.month
+            # v8.18.12 FIX: the page's month input sends month=YYYY-MM
+            # (e.g. '2026-08'); int('2026-08') crashed the PDF AND Excel
+            # exports with "invalid literal for int() with base 10". Accept
+            # both YYYY-MM (auto-injected export buttons) and separate
+            # year + month params (dashboard / command palette links).
+            if month and "-" in month:
+                _y, _m = month.split("-")[:2]
+                y, m = int(_y), int(_m)
+            else:
+                y = int(year_param) if year_param else now.year
+                m = int(month) if month else now.month
+            if not (1 <= m <= 12 and 1900 <= y <= 2200):
+                raise HTTPException(400, f"Invalid month/year: {month or f'{y}-{m}'}")
             data = func(y, m)
         elif report_name == "targets":
             td = target_date or (now.strftime("%Y-%m") if period == "monthly"
@@ -1226,6 +1236,10 @@ def universal_report_export(report_name: str, request: Request) -> Any:
             data = func()
         except Exception as e:
             raise HTTPException(500, f"Report generation failed: {e}")
+    except HTTPException:
+        # v8.18.12: deliberate error statuses (e.g. the 400 for an invalid
+        # month/year above) must pass through, not be masked as 500s.
+        raise
     except Exception as e:
         raise HTTPException(500, f"Report generation failed: {e}")
     
@@ -1235,6 +1249,11 @@ def universal_report_export(report_name: str, request: Request) -> Any:
     
     if fmt == "pdf":
         return _generate_pdf(report_name, data, filename)
+    elif fmt == "csv":
+        # v8.18.12: the daily-stock page's "Export CSV" button hits this
+        # route (the dedicated CSV route in profit.py is shadowed by this
+        # universal route), so CSV must be supported here too.
+        return _generate_csv(report_name, data, filename)
     else:
         return _generate_excel(report_name, data, filename)
 
@@ -1815,3 +1834,60 @@ def _generate_pdf(report_name: str, data: dict, filename: str) -> Any:
 def _dt_now():
     from datetime import datetime
     return datetime.now().strftime("%Y-%m-%d %H:%M")
+
+
+def _csv_cell(v):
+    """Flatten one cell value for CSV output (dicts/lists -> readable text)."""
+    if isinstance(v, bool):
+        return "Yes" if v else "No"
+    if isinstance(v, dict):
+        return ", ".join(f"{k}={x}" for k, x in v.items() if x is not None)
+    if isinstance(v, list):
+        return ", ".join(str(x) for x in v)
+    return "" if v is None else v
+
+
+def _generate_csv(report_name: str, data: dict, filename: str) -> Any:
+    """v8.18.12: CSV output for the universal export route.
+
+    Mirrors the KPI-sections + tables structure of the PDF/Excel generators
+    so all three formats of a report carry the same content. Needed because
+    the daily-stock page's \"Export CSV\" button targets this route, and the
+    dedicated CSV route in profit.py is shadowed by this universal route.
+    """
+    import io
+    import csv as _csv
+    from fastapi.responses import StreamingResponse
+
+    out = io.StringIO()
+    out.write("\ufeff")  # BOM so Excel auto-detects UTF-8
+    w = _csv.writer(out)
+    pretty_name = report_name.replace('-', ' ').title()
+    w.writerow([f"BillBook — {pretty_name}"])
+    w.writerow([f"Generated: {_dt_now()}", "BillBook POS + Billing System"])
+
+    if isinstance(data, dict):
+        for section_name, kpi_pairs in _extract_kpi_groups(data):
+            if not kpi_pairs:
+                continue
+            w.writerow([])
+            w.writerow([section_name.upper()])
+            for k, v in kpi_pairs:
+                w.writerow([k, _csv_cell(v)])
+        for table_title, rows in _find_all_tables(data):
+            if not rows:
+                continue
+            w.writerow([])
+            w.writerow([f"TABLE: {table_title}"])
+            cols = list(rows[0].keys())
+            w.writerow(cols)
+            for row in rows:
+                w.writerow([_csv_cell(row.get(c, "")) for c in cols])
+            w.writerow([f"{len(rows)} records"])
+    else:
+        w.writerow([])
+        w.writerow([_csv_cell(data)])
+
+    headers = {"Content-Disposition": f'attachment; filename="{filename}.csv"'}
+    return StreamingResponse(iter([out.getvalue()]), media_type="text/csv",
+                             headers=headers)

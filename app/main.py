@@ -254,6 +254,7 @@ CASHIER_RESTRICTED_PREFIXES = (
     "/api/fbr/compliance-check", # FBR compliance audit
     "/api/digest/config",        # digest config
     "/api/digest/test-send",    # digest manual test send
+    "/api/salary",              # v8.18.13: staff salary management — manager-only
 )
 
 
@@ -678,4 +679,10 @@ from .routers import fbr as _fbr_router
 app.include_router(_fbr_router.router)
 from .routers import digest as _digest_router
 app.include_router(_digest_router.router)
+# v8.18.13: Extra (non-stock) sales — other income outside the POS
+from .routers import extra_sales as _extra_sales_router
+app.include_router(_extra_sales_router.router)
+# v8.18.13: Staff salary management (records + advances + auto Salaries expense)
+from .routers import salary as _salary_router
+app.include_router(_salary_router.router)
 # (Prefix protection for these is added directly to CASHIER_RESTRICTED_PREFIXES above.)

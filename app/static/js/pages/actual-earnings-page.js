@@ -117,7 +117,8 @@ route('/reports/earnings', async (el) => {
     try {
       const r = await api(`/api/reports/actual-earnings?month=${month}`);
       // Empty state
-      if (r.total_sales === 0 && r.cogs === 0 && r.operating_expenses === 0) {
+      if (r.total_sales === 0 && r.cogs === 0 && r.operating_expenses === 0
+          && (r.extra_sales_income || 0) === 0) {
         $('#ae-out').innerHTML = `
           <div class="card text-center" style="padding:48px">
             <div style="width:64px;height:64px;margin:0 auto 16px;background:var(--bg-2, #f3f4f6);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--text-dim)">
@@ -144,7 +145,10 @@ route('/reports/earnings', async (el) => {
       const marginPct = r.total_sales > 0 ? (r.actual_earnings / r.total_sales * 100) : 0;
 
       // Waterfall bridge: max abs value for proportional bars
-      const bridgeValues = [r.total_sales, r.cogs, r.gross_profit, r.operating_expenses, r.actual_earnings];
+      // v8.18.13: extra sales (non-POS income) sits between gross profit and expenses
+      const extraIncome = r.extra_sales_income || 0;
+      const bridgeValues = [r.total_sales, r.cogs, r.gross_profit, extraIncome,
+                            r.operating_expenses, r.actual_earnings];
       const maxAbs = Math.max(...bridgeValues.map(Math.abs), 1);
 
       $('#ae-out').innerHTML = `
@@ -170,6 +174,13 @@ route('/reports/earnings', async (el) => {
               <div style="width:90px"></div>
             </div>
             ${bridgeBar('Gross Profit', r.gross_profit, maxAbs, 'result')}
+            ${extraIncome > 0 ? `
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+              <div style="width:140px;text-align:right"></div>
+              <div style="flex:1;color:var(--text-dim);font-size:12px">↓ plus Extra Sales (non-stock)</div>
+              <div style="width:90px"></div>
+            </div>
+            ${bridgeBar('Extra Sales', extraIncome, maxAbs, 'positive')}` : ''}
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
               <div style="width:140px;text-align:right"></div>
               <div style="flex:1;color:var(--text-dim);font-size:12px">↓ minus Operating Expenses</div>
@@ -190,6 +201,10 @@ route('/reports/earnings', async (el) => {
           ${r.purchases > 0 ? `
             <div style="margin-top:8px;padding:12px;background:var(--bg-2, #f3f4f6);border-radius:8px;font-size:13px;color:var(--text-dim)">
               <strong>Purchases (bills): ${fmtRs(r.purchases)}</strong> — stock bought this month. Shown separately because inventory becomes an asset, not an expense, until sold.
+            </div>` : ''}
+          ${extraIncome > 0 ? `
+            <div style="margin-top:8px;padding:12px;background:var(--bg-2, #f3f4f6);border-radius:8px;font-size:13px;color:var(--text-dim)">
+              <strong>Extra Sales: ${fmtRs(extraIncome)}</strong> — income from non-stock items sold outside the POS (cartons, raddi/scrap...). Added to earnings with no COGS. <a href="#/bills/extra-sales" style="text-decoration:underline">Manage →</a>
             </div>` : ''}
         </div>
 

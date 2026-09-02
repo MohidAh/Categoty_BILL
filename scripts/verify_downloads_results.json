@@ -1,0 +1,965 @@
+{
+ "checked": 95,
+ "ok": 95,
+ "failed": 0,
+ "failures": [],
+ "checks": [
+  {
+   "label": "monthly-close.pdf year+month",
+   "url": "/api/reports/monthly-close.pdf?year=2026&month=8",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2630,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "export bills.xlsx",
+   "url": "/api/export/bills.xlsx",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 7361,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "export insights.xlsx",
+   "url": "/api/export/insights.xlsx",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 7337,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "export.csv legacy",
+   "url": "/api/export.csv",
+   "expect": "csv",
+   "status": 200,
+   "content_type": "text/csv",
+   "size": 540,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "export fbr (json)",
+   "url": "/api/export/fbr?start=2026-06-01&end=2026-08-31",
+   "expect": "json",
+   "status": 200,
+   "content_type": "application/json",
+   "size": 1351,
+   "json_keys": [
+    "count",
+    "invoices",
+    "period",
+    "shop_ntn",
+    "shop_strn"
+   ],
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "export fbr.csv",
+   "url": "/api/export/fbr.csv?start=2026-06-01&end=2026-08-31",
+   "expect": "csv",
+   "status": 200,
+   "content_type": "text/csv",
+   "size": 323,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "activity export",
+   "url": "/api/activity/export?start=2026-06-01&end=2026-08-31",
+   "expect": "csv",
+   "status": 200,
+   "content_type": "text/csv",
+   "size": 69,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "accountant export zip",
+   "url": "/api/export/accountant?month=2026-08",
+   "expect": "zip",
+   "status": 200,
+   "content_type": "application/zip",
+   "size": 910,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "billwise xlsx (default)",
+   "url": "/api/reports/billwise/export?start=2026-06-01&end=2026-08-31&status=all",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 8120,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "billwise pdf",
+   "url": "/api/reports/billwise/export?format=pdf&start=2026-06-01&end=2026-08-31&status=all",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 3389,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "billwise xlsx bill_ids",
+   "url": "/api/reports/billwise/export?start=2026-06-01&end=2026-08-31&status=all&bill_ids=1",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5966,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "profit-analysis csv (default)",
+   "url": "/api/reports/profit-analysis/export?start=2026-06-01&end=2026-08-31&group_by=category",
+   "expect": "csv",
+   "status": 200,
+   "content_type": "text/csv",
+   "size": 533,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "profit-analysis csv by month",
+   "url": "/api/reports/profit-analysis/export?start=2026-06-01&end=2026-08-31&group_by=month",
+   "expect": "csv",
+   "status": 200,
+   "content_type": "text/csv",
+   "size": 427,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "profit-analysis pdf",
+   "url": "/api/reports/profit-analysis/export?format=pdf&start=2026-06-01&end=2026-08-31&group_by=category",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 4455,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "profit-analysis excel",
+   "url": "/api/reports/profit-analysis/export?format=excel&start=2026-06-01&end=2026-08-31&group_by=category",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 6652,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "sold-stock csv (default)",
+   "url": "/api/reports/sold-stock/export?start=2026-06-01&end=2026-08-31&group_by=category",
+   "expect": "csv",
+   "status": 200,
+   "content_type": "text/csv",
+   "size": 335,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "sold-stock pdf",
+   "url": "/api/reports/sold-stock/export?format=pdf&start=2026-06-01&end=2026-08-31&group_by=category",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 3722,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "sold-stock excel",
+   "url": "/api/reports/sold-stock/export?format=excel&start=2026-06-01&end=2026-08-31&group_by=category",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 6342,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "daily-stock export csv",
+   "url": "/api/reports/daily-stock/export?format=csv&date=2026-08-15",
+   "expect": "csv",
+   "status": 200,
+   "content_type": "text/csv",
+   "size": 605,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "daily-stock export bare (excel default)",
+   "url": "/api/reports/daily-stock/export?date=2026-08-15",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 6242,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "monthly-close pdf month=YYYY-MM",
+   "url": "/api/reports/monthly-close/export?format=pdf&month=2026-08",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 8882,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "monthly-close excel month=YYYY-MM",
+   "url": "/api/reports/monthly-close/export?format=excel&month=2026-08",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 8696,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "monthly-close pdf year+month",
+   "url": "/api/reports/monthly-close/export?format=pdf&year=2026&month=8",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 8882,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ monthly pdf",
+   "url": "/api/reports/monthly/export?format=pdf&month=2026-08",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2570,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ monthly excel",
+   "url": "/api/reports/monthly/export?format=excel&month=2026-08",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5656,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ ytd pdf",
+   "url": "/api/reports/ytd/export?format=pdf&month=2026-08",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2956,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ ytd excel",
+   "url": "/api/reports/ytd/export?format=excel&month=2026-08",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5849,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ margins pdf",
+   "url": "/api/reports/margins/export?format=pdf&month=2026-08",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 3173,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ margins excel",
+   "url": "/api/reports/margins/export?format=excel&month=2026-08",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5959,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ earnings pdf",
+   "url": "/api/reports/earnings/export?format=pdf&month=2026-08",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2811,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ earnings excel",
+   "url": "/api/reports/earnings/export?format=excel&month=2026-08",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5882,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ actual-earnings pdf",
+   "url": "/api/reports/actual-earnings/export?format=pdf&month=2026-08",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2830,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ actual-earnings excel",
+   "url": "/api/reports/actual-earnings/export?format=excel&month=2026-08",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5888,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ pnl pdf",
+   "url": "/api/reports/pnl/export?format=pdf&month=2026-08",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2537,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ pnl excel",
+   "url": "/api/reports/pnl/export?format=excel&month=2026-08",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5651,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ cash-flow pdf",
+   "url": "/api/reports/cash-flow/export?format=pdf&month=2026-08",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2645,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ cash-flow excel",
+   "url": "/api/reports/cash-flow/export?format=excel&month=2026-08",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5724,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ expenses pdf",
+   "url": "/api/reports/expenses/export?format=pdf&month=2026-08",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 3633,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ expenses excel",
+   "url": "/api/reports/expenses/export?format=excel&month=2026-08",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 6264,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ store-profit pdf",
+   "url": "/api/reports/store-profit/export?format=pdf&month=2026-08",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 4274,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ store-profit excel",
+   "url": "/api/reports/store-profit/export?format=excel&month=2026-08",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 6562,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ balance-sheet pdf",
+   "url": "/api/reports/balance-sheet/export?format=pdf&month=2026-08",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2562,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ balance-sheet excel",
+   "url": "/api/reports/balance-sheet/export?format=excel&month=2026-08",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5579,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ cash-buckets pdf",
+   "url": "/api/reports/cash-buckets/export?format=pdf&date=2026-08-15",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2657,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ cash-buckets excel",
+   "url": "/api/reports/cash-buckets/export?format=excel&date=2026-08-15",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5704,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ daily-stock pdf",
+   "url": "/api/reports/daily-stock/export?format=pdf&date=2026-08-15",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 3583,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ daily-stock excel",
+   "url": "/api/reports/daily-stock/export?format=excel&date=2026-08-15",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 6242,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ profit-analysis pdf",
+   "url": "/api/reports/profit-analysis/export?format=pdf&start=2026-06-01&end=2026-08-31",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 4455,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ profit-analysis excel",
+   "url": "/api/reports/profit-analysis/export?format=excel&start=2026-06-01&end=2026-08-31",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 6652,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ sold-stock pdf",
+   "url": "/api/reports/sold-stock/export?format=pdf&start=2026-06-01&end=2026-08-31",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 3722,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ sold-stock excel",
+   "url": "/api/reports/sold-stock/export?format=excel&start=2026-06-01&end=2026-08-31",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 6342,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ top-items pdf",
+   "url": "/api/reports/top-items/export?format=pdf&start=2026-06-01&end=2026-08-31",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 3064,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ top-items excel",
+   "url": "/api/reports/top-items/export?format=excel&start=2026-06-01&end=2026-08-31",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5852,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ peak-hours pdf",
+   "url": "/api/reports/peak-hours/export?format=pdf&start=2026-06-01&end=2026-08-31",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 4292,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ peak-hours excel",
+   "url": "/api/reports/peak-hours/export?format=excel&start=2026-06-01&end=2026-08-31",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 6138,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ shrinkage pdf",
+   "url": "/api/reports/shrinkage/export?format=pdf&start=2026-06-01&end=2026-08-31",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2319,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ shrinkage excel",
+   "url": "/api/reports/shrinkage/export?format=excel&start=2026-06-01&end=2026-08-31",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5313,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ sales-by-customer pdf",
+   "url": "/api/reports/sales-by-customer/export?format=pdf&start=2026-06-01&end=2026-08-31",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2853,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ sales-by-customer excel",
+   "url": "/api/reports/sales-by-customer/export?format=excel&start=2026-06-01&end=2026-08-31",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5698,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ sales-by-employee pdf",
+   "url": "/api/reports/sales-by-employee/export?format=pdf&start=2026-06-01&end=2026-08-31",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2799,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ sales-by-employee excel",
+   "url": "/api/reports/sales-by-employee/export?format=excel&start=2026-06-01&end=2026-08-31",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5641,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ atv-basket pdf",
+   "url": "/api/reports/atv-basket/export?format=pdf&start=2026-06-01&end=2026-08-31",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2432,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ atv-basket excel",
+   "url": "/api/reports/atv-basket/export?format=excel&start=2026-06-01&end=2026-08-31",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5450,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ supplier-performance pdf",
+   "url": "/api/reports/supplier-performance/export?format=pdf&start=2026-06-01&end=2026-08-31",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2968,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ supplier-performance excel",
+   "url": "/api/reports/supplier-performance/export?format=excel&start=2026-06-01&end=2026-08-31",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5774,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ targets pdf",
+   "url": "/api/reports/targets/export?format=pdf&period=daily&target_date=2026-08-15",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2352,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ targets excel",
+   "url": "/api/reports/targets/export?format=excel&period=daily&target_date=2026-08-15",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5370,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ overview pdf",
+   "url": "/api/reports/overview/export?format=pdf",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 5466,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ overview excel",
+   "url": "/api/reports/overview/export?format=excel",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 6814,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ billwise pdf",
+   "url": "/api/reports/billwise/export?format=pdf",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 3389,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ billwise excel",
+   "url": "/api/reports/billwise/export?format=excel",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 8120,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ audit pdf",
+   "url": "/api/reports/audit/export?format=pdf",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2046,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ audit excel",
+   "url": "/api/reports/audit/export?format=excel",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5173,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ suspicious pdf",
+   "url": "/api/reports/suspicious/export?format=pdf",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2309,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ suspicious excel",
+   "url": "/api/reports/suspicious/export?format=excel",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5303,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ yoy-compare pdf",
+   "url": "/api/reports/yoy-compare/export?format=pdf",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2737,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ yoy-compare excel",
+   "url": "/api/reports/yoy-compare/export?format=excel",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5620,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ supplier-comparison pdf",
+   "url": "/api/reports/supplier-comparison/export?format=pdf",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 3025,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ supplier-comparison excel",
+   "url": "/api/reports/supplier-comparison/export?format=excel",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5996,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ category-cost-trends pdf",
+   "url": "/api/reports/category-cost-trends/export?format=pdf",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2379,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ category-cost-trends excel",
+   "url": "/api/reports/category-cost-trends/export?format=excel",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5390,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ stock-writeoffs pdf",
+   "url": "/api/reports/stock-writeoffs/export?format=pdf",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2067,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ stock-writeoffs excel",
+   "url": "/api/reports/stock-writeoffs/export?format=excel",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5186,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ retention pdf",
+   "url": "/api/reports/retention/export?format=pdf",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2365,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ retention excel",
+   "url": "/api/reports/retention/export?format=excel",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5409,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ gmroi pdf",
+   "url": "/api/reports/gmroi/export?format=pdf",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2366,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ gmroi excel",
+   "url": "/api/reports/gmroi/export?format=excel",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5381,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ sell-through pdf",
+   "url": "/api/reports/sell-through/export?format=pdf",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2374,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ sell-through excel",
+   "url": "/api/reports/sell-through/export?format=excel",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5394,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ inventory-turnover pdf",
+   "url": "/api/reports/inventory-turnover/export?format=pdf",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2586,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ inventory-turnover excel",
+   "url": "/api/reports/inventory-turnover/export?format=excel",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5597,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ ar-aging pdf",
+   "url": "/api/reports/ar-aging/export?format=pdf",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2419,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ ar-aging excel",
+   "url": "/api/reports/ar-aging/export?format=excel",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5441,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ ap-aging pdf",
+   "url": "/api/reports/ap-aging/export?format=pdf",
+   "expect": "pdf",
+   "status": 200,
+   "content_type": "application/pdf",
+   "size": 2427,
+   "ok": true,
+   "problems": []
+  },
+  {
+   "label": "univ ap-aging excel",
+   "url": "/api/reports/ap-aging/export?format=excel",
+   "expect": "xlsx",
+   "status": 200,
+   "content_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   "size": 5452,
+   "ok": true,
+   "problems": []
+  }
+ ]
+}

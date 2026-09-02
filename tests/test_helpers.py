@@ -46,6 +46,7 @@ _CLEAR_TABLES = (
     "price_pushes", "branch_summaries",
     "audit_findings", "audit_runs",
     "ai_usage",
+    "extra_sales", "salary_records", "salary_advances",  # v8.18.13
 )
 
 

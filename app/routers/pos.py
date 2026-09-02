@@ -86,6 +86,7 @@ class EmployeeUpdateIn(BaseModel):
     phone: str | None = None
     role: str | None = None
     active: int | None = None
+    monthly_salary: float | None = None  # v8.18.13: fixed monthly salary
 
 
 
@@ -1837,12 +1838,14 @@ def add_employee_route(name: str = "", phone: str = "", role: str = "cashier") -
 
 @router.put("/api/employees/{eid}")
 def update_employee_route(eid: int, payload: EmployeeUpdateIn) -> Any:
-    ok = shop_mod.update_employee(eid, payload.name, payload.phone, payload.role, payload.active)
+    ok = shop_mod.update_employee(eid, payload.name, payload.phone, payload.role,
+                                  payload.active, payload.monthly_salary)
     if not ok:
         raise HTTPException(404, "employee not found or no fields to update")
     db.log_activity("employee_updated", "employee", eid,
                     f"Employee {eid} updated",
-                    {"name": payload.name, "role": payload.role})
+                    {"name": payload.name, "role": payload.role,
+                     "monthly_salary": payload.monthly_salary})
     return {"ok": True}
 
 

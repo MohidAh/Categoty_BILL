@@ -790,7 +790,10 @@ route('/reports/peak-hours', async (el, path, q) => {
 
 
 // ═══════════════════════════════════════════════════
-// MONTHLY CLOSE — snapshot + PDF download
+// MONTHLY CLOSE — snapshot + export (PDF/Excel via the universal
+// v8.16.1 auto-injected export buttons, consistent with every other report
+// page; the page's own duplicate "Download PDF" button was removed in
+// v8.18.12)
 // ═══════════════════════════════════════════════════
 route('/reports/monthly-close', async (el) => {
   // v8.18.9 FIX ("no data showing"): this page always showed zeros —
@@ -816,21 +819,11 @@ route('/reports/monthly-close', async (el) => {
           <span class="pos-date-input-icon">${SVG.calendar}</span>
           <input class="input input-sm" id="mc-month" type="month" value="${thisMonth}">
         </div>
-        <button class="btn btn-secondary btn-sm" id="mc-pdf-btn">
-          <span style="display:inline-flex;width:14px;height:14px">${SVG.download}</span>
-          Download PDF
-        </button>
       </div>
     </div>
     <div id="mc-out">${skeletonCards(2)}</div>`;
 
   $('#mc-month').onchange = loadReport;
-  $('#mc-pdf-btn').onclick = () => {
-    const monthVal = $('#mc-month').value;
-    if (!monthVal) { toast('Pick a month first', 'warning'); return; }
-    const [y, m] = monthVal.split('-');
-    window.open(`/api/reports/monthly-close.pdf?year=${y}&month=${parseInt(m)}`, '_blank');
-  };
   await loadReport();
 
   function detailRows(details) {

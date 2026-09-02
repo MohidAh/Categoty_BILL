@@ -82,14 +82,15 @@ route('/settings/employees', async (el) => {
         <div class="table-wrap">
           <table>
             <thead><tr>
-              <th>Name</th><th>Phone</th><th>Role</th>
+              <th>Name</th><th>Phone</th><th>Role</th><th>Monthly Salary</th>
               <th>PIN</th><th>Status</th><th>Created</th><th>Actions</th>
             </tr></thead>
             <tbody>${list.map(e => `<tr>
               <td class="font-semibold">${esc(e.name)}</td>
               <td class="text-sm">${esc(e.phone || '—')}</td>
               <td><span class="badge ${e.role === 'admin' ? 'badge-danger' : e.role === 'manager' ? 'badge-warning' : 'badge-success'}">${esc(e.role)}</span></td>
-              <td>${e.pin ? '<span class="badge badge-success">Set</span>' : '<span class="badge badge-warning">Not set</span>'}</td>
+              <td>${e.monthly_salary > 0 ? `<strong>${fmt(e.monthly_salary)}</strong><span class="text-dim text-xs"> Rs</span>` : `<a href="#/bills/salary" class="text-dim text-sm">set in Staff Salary →</a>`}</td>
+              <td>${e.pin || e.pin_hash ? '<span class="badge badge-success">Set</span>' : '<span class="badge badge-warning">Not set</span>'}</td>
               <td>${e.active ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-secondary">Inactive</span>'}</td>
               <td class="text-sm text-dim">${fmtDate(e.created_at)}</td>
               <td>
@@ -128,12 +129,15 @@ route('/settings/employees', async (el) => {
     openModal(id ? 'Edit Employee' : 'Add Employee', `
       <div><label>Name</label><input class="input" id="e-name" value="${emp ? esc(emp.name) : ''}" placeholder="Full name"></div>
       <div class="mt-3"><label>Phone</label><input class="input" id="e-phone" value="${emp ? esc(emp.phone || '') : ''}" placeholder="03001234567"></div>
-      <div class="mt-3"><label>Role</label><select class="select" id="e-role">
-        <option value="cashier" ${emp?.role === 'cashier' ? 'selected' : ''}>Cashier (POS only)</option>
-        <option value="manager" ${emp?.role === 'manager' ? 'selected' : ''}>Manager (POS + reports)</option>
-        <option value="admin" ${emp?.role === 'admin' ? 'selected' : ''}>Admin (full access)</option>
-      </select></div>
-      ${id ? '' : '<p class="text-xs text-dim mt-2">After saving, click the key icon to set a PIN for POS login.</p>'}`,
+      <div class="mt-3 grid grid-2">
+        <div><label>Role</label><select class="select" id="e-role">
+          <option value="cashier" ${emp?.role === 'cashier' ? 'selected' : ''}>Cashier (POS only)</option>
+          <option value="manager" ${emp?.role === 'manager' ? 'selected' : ''}>Manager (POS + reports)</option>
+          <option value="admin" ${emp?.role === 'admin' ? 'selected' : ''}>Admin (full access)</option>
+        </select></div>
+        <div><label>Monthly Salary (Rs)</label><input class="input" id="e-salary" type="number" min="0" step="any" value="${emp ? (emp.monthly_salary || 0) : 0}" placeholder="0"></div>
+      </div>
+      <p class="text-xs text-dim mt-2">Salary is managed on the <a href="#/bills/salary">Staff Salary</a> page (off-days, advances, payout). After saving, click the key icon to set a PIN for POS login.</p>`,
       `<button class="btn btn-secondary" data-modal-close>Cancel</button>
        <button class="btn" id="e-save-btn">${SVG.save} Save</button>`);
     $('#e-save-btn').onclick = async () => {
@@ -141,6 +145,7 @@ route('/settings/employees', async (el) => {
         name: $('#e-name').value,
         phone: $('#e-phone').value,
         role: $('#e-role').value,
+        monthly_salary: parseFloat($('#e-salary').value) || 0,
       };
       if (!payload.name) { toast('Name is required', 'error'); return; }
       try {
@@ -149,6 +154,11 @@ route('/settings/employees', async (el) => {
         } else {
           // POST /api/employees uses query params
           await apiPost(`/api/employees?name=${encodeURIComponent(payload.name)}&phone=${encodeURIComponent(payload.phone)}&role=${payload.role}`, {});
+          if (payload.monthly_salary > 0) {
+            const r = await api('/api/employees');
+            const created = (r.employees || []).find(x => x.name === payload.name);
+            if (created) await apiPut(`/api/employees/${created.id}`, { monthly_salary: payload.monthly_salary });
+          }
         }
         toast('Employee saved', 'success');
         closeModal();

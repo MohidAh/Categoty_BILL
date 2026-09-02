@@ -357,10 +357,21 @@ def get_cash_flow(month: str = "") -> dict:
             "AND payment_status='paid' AND strftime('%Y-%m', bill_date)=?",
             (month,),
         ).fetchone()["v"]
+        # v8.18.13: extra (non-stock) sales income (raddi, cartons...) — by method
+        extra_cash = c.execute(
+            "SELECT COALESCE(SUM(total), 0) v FROM extra_sales "
+            "WHERE strftime('%Y-%m', sale_date)=? AND payment_method='cash'",
+            (month,),
+        ).fetchone()["v"]
+        extra_other = c.execute(
+            "SELECT COALESCE(SUM(total), 0) v FROM extra_sales "
+            "WHERE strftime('%Y-%m', sale_date)=? AND payment_method != 'cash'",
+            (month,),
+        ).fetchone()["v"]
     # v8.5.5: total_in now includes ALL payment methods (cash + card + online).
     # The old code only counted cash sales as "Total Cash In" which was
     # confusing — users expected the total to match their total sales.
-    total_in = cash_sales + split_cash + card_sales + online_sales + customer_payments
+    total_in = cash_sales + split_cash + card_sales + online_sales + customer_payments + extra_cash
     total_out = cash_expenses + cash_drawer_out
     net_cash = total_in - total_out
     return {
@@ -371,6 +382,9 @@ def get_cash_flow(month: str = "") -> dict:
             "card_sales": round(card_sales, 2),
             "online_sales": round(online_sales, 2),
             "customer_payments": round(customer_payments, 2),
+            # v8.18.13: extra (non-stock) sales
+            "extra_sales_cash": round(float(extra_cash or 0), 2),
+            "extra_sales_other": round(float(extra_other or 0), 2),
             "total_in": round(total_in, 2),
         },
         "outflows": {

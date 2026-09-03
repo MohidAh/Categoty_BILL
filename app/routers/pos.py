@@ -936,14 +936,46 @@ def _sale_insert_cash_drawer(c, payload, total, invoice_no: str, sale_id: int) -
 
 
 def _sale_apply_stock_state(c, deferred_state_sales: list, sale_id: int, invoice_no: str) -> None:
-    """Step 11: Apply stock-state mutation via shared connection."""
+    """Step 11: Apply stock-state mutation via shared connection.
+
+    v8.18.17: bag categories (see profit_engine.sync_bags_stock_to_sold)
+    never take the sale decrement — their stock qty follows the
+    max(purchased, sold) rule. After the non-bag lines are applied, the
+    bag categories in this sale get the scoped bags sync, which raises
+    qty to the new total-sold level when sold has passed it (and leaves
+    it alone when purchased is still ahead — the user's exact rule).
+    """
+    bag_lines = []
+    try:
+        from ..profit_engine import bag_category_ids as _sale_bag_ids
+        sale_bag_ids = _sale_bag_ids(c)
+    except Exception:
+        sale_bag_ids = set()
+
     for cid, qty in deferred_state_sales:
+        if cid in sale_bag_ids:
+            bag_lines.append((cid, qty))
+            continue
         try:
             profit_mod.apply_sale_to_state(cid, qty, c=c)
         except Exception as e:
             profit_mod.log_state_drift(
                 "apply_sale_to_state", cid, str(e),
                 {"sale_id": sale_id, "invoice_no": invoice_no, "qty": qty},
+                c=c,
+            )
+
+    if bag_lines:
+        # Bag categories sold in this sale: raise qty to the new total sold
+        # (only when sold now exceeds it — purchased qty is never lowered).
+        try:
+            from ..profit_engine import sync_bags_stock_to_sold as _sync_bags
+            _sync_bags(c, category_ids={cid for cid, _ in bag_lines})
+        except Exception as e:
+            profit_mod.log_state_drift(
+                "sync_bags_stock_to_sold", bag_lines[0][0], str(e),
+                {"sale_id": sale_id, "invoice_no": invoice_no,
+                 "bag_categories": sorted(cid for cid, _ in bag_lines)},
                 c=c,
             )
 
@@ -1264,18 +1296,18 @@ def _reverse_sale_core(sale_id: int, c, reason: str = ""):
         )
 
     # Reverse stock state
-    # v8.19.1: sales imported from the Ezi POS never decremented stock for
-    # BAG categories (bag stock tracks "qty sold" instead — see
-    # profit_engine.sync_bags_stock_to_sold). Reversing those here would
-    # double-bump the stock, so skip bag lines for imported sales only;
-    # built-in POS bag sales DID decrement and still reverse normally.
+    # v8.18.17: bag categories NEVER take the sale decrement on ANY origin
+    # (Ezi import skips bag lines; built-in POS sales skip them too since
+    # v8.18.17 — their stock tracks "qty sold" via
+    # profit_engine.sync_bags_stock_to_sold instead; see the bags block
+    # comment there). Re-adding bag qty here would double-bump the stock,
+    # so bag lines are always skipped. Bag qty only ever rises to the
+    # current total-sold level (never lowered), and refunded sales stop
+    # counting as sold automatically.
     skip_bag_lines = set()
     try:
-        if c.execute(
-            "SELECT 1 FROM ezi_pos_imports WHERE sale_id=? LIMIT 1", (sale_id,)
-        ).fetchone():
-            from ..profit_engine import bag_category_ids as _bag_cat_ids
-            skip_bag_lines = _bag_cat_ids(c)
+        from ..profit_engine import bag_category_ids as _bag_cat_ids
+        skip_bag_lines = _bag_cat_ids(c)
     except Exception:
         skip_bag_lines = set()
     reversed_stock_lines = 0
@@ -1563,9 +1595,21 @@ def refund_sale(sale_id: int, payload: dict = None, request: Request = None) -> 
         # via the write_tx context manager. Previously, the error was logged
         # but swallowed — the sale row was marked refunded while stock_state
         # stayed inconsistent with the ledger. Now we surface the error.
+        # v8.18.17: bag categories NEVER take the sale decrement on any
+        # origin (Ezi import or built-in POS — see
+        # profit_engine.sync_bags_stock_to_sold), so their lines are never
+        # re-added here either. Re-adding would double-bump bag stock.
+        refund_skip_bag_lines = set()
+        try:
+            from ..profit_engine import bag_category_ids as _refund_bag_ids
+            refund_skip_bag_lines = _refund_bag_ids(c)
+        except Exception:
+            refund_skip_bag_lines = set()
         reversed_stock_lines = 0
         for si in sale_items:
             if si["category_id"] and si["qty"] and si["qty"] > 0:
+                if si["category_id"] in refund_skip_bag_lines:
+                    continue
                 try:
                     cogs_value = None
                     if si["cost_price"] and si["cost_price"] > 0:

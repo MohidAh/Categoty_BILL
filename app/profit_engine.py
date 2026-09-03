@@ -405,23 +405,35 @@ def _apply_adjustment_to_state(c, category_id, delta, txn_at=None):
     return {"qty": new_qty, "value": round(new_value, 2), "avg": new_avg}
 
 
-# ─── Bags categories: stock tracks qty SOLD (v8.19.1) ───────────────────────
+# ─── Bags categories: stock tracks qty SOLD (v8.19.1, unified v8.18.17) ─────
 #
 # BUSINESS RULE (user-defined): shopping-bag categories ("Bag Rs 10/20/30/…",
 # auto-created by the Ezi POS import, or any category named "Bag…"/"Bags" /
 # coded BAG…) do NOT have their purchase bills entered in BillBook — bags are
 # bought as EXPENSES. So the normal "stock = purchased − sold" model can only
-# ever go negative for bags. Instead, the bag category's stock qty is used as
-# a display of "bags sold":
+# ever go negative for bags. Instead, the bag category's stock qty follows:
 #
-#     on every POS import (and every stock-state rebuild):
-#         sold = total qty of non-refunded sale_items for the category
-#         if current_qty < sold:  current_qty = sold
-#         else:                   leave it alone  (never decreases)
+#     sold = total qty of non-refunded sale_items for the category
+#     if current_qty < sold:  current_qty = sold   ("purchased is raised
+#     else:                   leave it alone        to equal SOLD")
 #
-# The guard is intentional: a manual stock adjustment (or a higher historical
-# value) is never clobbered downward — the number only ever rises to the
-# total-sold level.
+# i.e. qty = max(purchased, sold) — the number only ever rises to the
+# total-sold level; it is NEVER lowered by the sync (a manual stock
+# adjustment or a higher historical value is never clobbered downward).
+#
+# UNIFIED MODEL (v8.18.17): bag SALE events never decrement the bag pool on
+# ANY path, so every path computes the same thing:
+#   - Ezi POS import:      bag lines skip the per-sale decrement; the
+#                          end-of-import sync raises qty to max(qty, sold).
+#   - built-in POS sales:  bag lines skip the decrement too; the sale applies
+#                          the same sync (floor at sold).
+#   - refunds/voids:       bag lines are NEVER re-added (nothing to undo).
+#   - full rebuild:        bag sale events are skipped in the replay; the
+#                          post-replay sync raises qty to max(purchases +
+#                          adjustments, sold). Skipping also preserves the
+#                          original sale_items.cost_price for imported bags
+#                          (INVTRANS.COST), instead of overwriting it with
+#                          the (usually zero) bag pool average.
 
 def bag_category_ids(c) -> set:
     """Active price_categories that are bag categories.
@@ -436,18 +448,24 @@ def bag_category_ids(c) -> set:
     return {r["id"] for r in rows}
 
 
-def sync_bags_stock_to_sold(c=None) -> list:
-    """Apply the bags rule (see block comment above) to EVERY active bag
-    category. Returns a list of {category_id, name, from_qty, to_qty} for the
-    categories that were raised; empty list when nothing needed changing.
+def sync_bags_stock_to_sold(c=None, category_ids=None) -> list:
+    """Apply the bags rule (see block comment above). Returns a list of
+    {category_id, name, from_qty, to_qty} for the categories that were
+    raised; empty list when nothing needed changing.
 
     Safe to call repeatedly (idempotent: once qty == sold it stops matching).
     If `c` is provided, uses that connection and does NOT commit;
     otherwise opens its own write_tx().
+    `category_ids` (optional) restricts the sync to a subset of bag
+    categories — used by the POS sale path so a sale only touches the
+    bag categories actually sold, not every bag in the shop.
     """
     def _run(c):
+        ids = bag_category_ids(c)
+        if category_ids:
+            ids &= {int(x) for x in category_ids if x is not None}
         changed = []
-        for cid in bag_category_ids(c):
+        for cid in ids:
             sold = c.execute(
                 "SELECT COALESCE(SUM(si.qty), 0) AS s FROM sale_items si "
                 "JOIN sales s ON si.sale_id = s.id "
@@ -519,9 +537,18 @@ def rebuild_stock_state() -> dict:
                 "value": float(r["current_value"] or 0),
                 "avg_cost": float(r["current_avg_cost"] or 0),
             }
+        # v8.18.17: bag sale events are excluded from the replay entirely —
+        # bag categories follow the max(purchased, sold) rule (see the bags
+        # block comment above), and skipping the events also preserves the
+        # imported INVTRANS.COST in sale_items.cost_price (a sale-event
+        # replay would overwrite it with the bag pool's avg — usually 0).
+        bag_ids = bag_category_ids(c)
 
     events = []
     for p in purchases:
+        # NOTE: bag PURCHASES (if the user ever uploads bag bills) DO replay —
+        # they are the "purchased" side of the max(purchased, sold) rule.
+        # Only bag SALE events are excluded (see bag_ids note above).
         events.append({"ts": p["event_ts"] or "", "seq": 0, "category_id": p["category_id"],
                        "qty": float(p["qty"]), "unit_price": float(p["price"]),
                        "sale_item_id": None, "type": "purchase"})
@@ -530,6 +557,8 @@ def rebuild_stock_state() -> dict:
                        "qty": float(a["delta"]), "unit_price": None,
                        "sale_item_id": None, "type": "adjustment"})
     for s in sales:
+        if s["category_id"] in bag_ids:
+            continue  # v8.18.17: bag sales never decrement the pool (unified model)
         events.append({"ts": s["created_at"] or "", "seq": 2, "category_id": s["category_id"],
                        "qty": float(s["qty"]), "unit_price": None,
                        "sale_item_id": s["sale_item_id"], "type": "sale"})
@@ -679,6 +708,11 @@ def rebuild_categories_state(category_ids, *, c=None) -> dict:
             "ORDER BY created_at, id",
             tuple(ids),
         ).fetchall()
+        # v8.18.17: bag sale events never decrement the pool (unified bags
+        # model — max(purchased, sold); see the block comment above). Only
+        # the requested categories are checked, and purchases/adjustments
+        # still replay normally for bags.
+        bag_ids = bag_category_ids(c) & set(ids)
         events = []
         for p in purchases:
             events.append({"ts": p["event_ts"] or "", "seq": 0, "tie": p["bill_item_id"] or 0,
@@ -691,6 +725,8 @@ def rebuild_categories_state(category_ids, *, c=None) -> dict:
                            "qty": float(a["delta"]), "unit_price": None,
                            "type": "adjustment"})
         for s in sales:
+            if s["category_id"] in bag_ids:
+                continue  # v8.18.17: bag sales never decrement the pool (unified model)
             events.append({"ts": s["created_at"] or "", "seq": 2, "tie": s["sale_item_id"] or 0,
                            "category_id": s["category_id"],
                            "qty": float(s["qty"]), "unit_price": None,

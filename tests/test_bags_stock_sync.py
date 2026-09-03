@@ -14,8 +14,8 @@ Covered here:
   3. refunded sales don't count towards "sold"
   4. rebuild_stock_state applies the rule (dirty-flag boot rebuild too)
   5. deleting an import run does NOT reverse bag stock (never decremented)
-  6. refunding an IMPORTED bag sale does not bump stock (no double-apply),
-     while a built-in POS bag sale still reverses normally
+  6. refunding ANY bag sale (imported or built-in POS) never bumps stock
+     (v8.18.17 unified model — no origin decrements, none re-adds)
 """
 import pytest
 
@@ -180,7 +180,9 @@ def test_delete_import_run_skips_bag_stock_reversal(tmp_db_path):
     assert _stock(normal) == 0.0
 
 
-def test_reverse_imported_bag_sale_skips_stock_but_pos_bag_sale_reverses(tmp_db_path):
+def test_reverse_imported_bag_sale_skips_stock_and_pos_bag_sale_too(tmp_db_path):
+    """v8.18.17 unified model: NO sale origin decrements bag stock, so NO
+    origin re-adds it on reversal either (imported or built-in POS)."""
     from app.routers.pos import _reverse_sale_core
     bag = _mk_category("Bag Rs 20", "BAG20")
     # imported bag sale (has the ezi_pos_imports marker)
@@ -196,7 +198,7 @@ def test_reverse_imported_bag_sale_skips_stock_but_pos_bag_sale_reverses(tmp_db_
 
     with db.write_tx() as c:
         _reverse_sale_core(pos_sale, c, reason="test POS refund")
-    assert _stock(bag) == 12.0, "built-in POS bag sale refund reverses normally"
+    assert _stock(bag) == 10.0, "v8.18.17: POS bag sale refund must not bump stock either (POS bag sales never decremented)"
 
 
 if __name__ == "__main__":

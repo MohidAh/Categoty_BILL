@@ -622,6 +622,127 @@ def rebuild_stock_state() -> dict:
             "bags_raised": bags_raised}
 
 
+def rebuild_categories_state(category_ids, *, c=None) -> dict:
+    """v8.18.16: scoped stock-state replay for specific categories.
+
+    Recomputes (qty, value, avg) for ONLY the given categories from the
+    same authoritative event sources as the full rebuild_stock_state()
+    — confirmed non-deleted bills, valid (non-refunded) sales, stock
+    adjustments — using identical replay semantics and event ordering,
+    then writes the result. Historical sale_items.cost_price is NOT
+    rewritten here (that stays a full-rebuild responsibility; set the
+    stock_state_dirty flag if you want the next boot to re-derive it).
+
+    WHY: the incremental _reverse/_apply mirrors are exact only while the
+    pool stays positive. When a deleted bill's stock was already
+    partially sold, qty can pass <= 0 mid-reversal, the value clamp
+    zeroes pool value, and the matching restore then re-applies the full
+    original value — leaving the running avg cost permanently inflated
+    vs what a full rebuild would compute. Scoped replay after every
+    bill delete/restore makes the live state EXACTLY equal to a full
+    rebuild at all times (drift becomes impossible), and the
+    delete → restore round trip returns to the exact pre-delete state.
+
+    If `c` is provided, runs inside the caller's write_tx and does NOT
+    commit; otherwise opens its own.
+    Returns {category_id: {"qty","value","avg"}} for the replayed set.
+    """
+    ids = sorted({int(x) for x in (category_ids or []) if x is not None})
+    if not ids:
+        return {}
+
+    def _run(c):
+        placeholders = ",".join("?" * len(ids))
+        purchases = c.execute(
+            "SELECT bi.category_id, "
+            "CASE bi.unit WHEN 'dozen' THEN bi.qty*12 ELSE bi.qty END AS qty, "
+            "bi.price, COALESCE(b.bill_date, b.created_at) AS event_ts, "
+            "b.id AS bill_id, bi.id AS bill_item_id "
+            "FROM bill_items bi JOIN bills b ON bi.bill_id = b.id "
+            f"WHERE b.status='confirmed' AND b.deleted_at IS NULL "
+            "AND bi.category_id IS NOT NULL AND bi.price > 0 AND bi.qty > 0 "
+            f"AND bi.category_id IN ({placeholders}) "
+            "ORDER BY event_ts, b.id, bi.id",
+            tuple(ids),
+        ).fetchall()
+        sales = c.execute(
+            "SELECT si.id AS sale_item_id, si.category_id, si.qty, s.created_at "
+            "FROM sale_items si JOIN sales s ON si.sale_id = s.id "
+            "WHERE si.category_id IS NOT NULL AND si.qty > 0 "
+            f"AND {db.VALID_SALE_FILTER} AND si.category_id IN ({placeholders}) "
+            "ORDER BY s.created_at, si.id",
+            tuple(ids),
+        ).fetchall()
+        adjustments = c.execute(
+            "SELECT category_id, delta, created_at, id "
+            f"FROM stock_adjustments WHERE category_id IN ({placeholders}) "
+            "ORDER BY created_at, id",
+            tuple(ids),
+        ).fetchall()
+        events = []
+        for p in purchases:
+            events.append({"ts": p["event_ts"] or "", "seq": 0, "tie": p["bill_item_id"] or 0,
+                           "category_id": p["category_id"],
+                           "qty": float(p["qty"]),
+                           "unit_price": float(p["price"]), "type": "purchase"})
+        for a in adjustments:
+            events.append({"ts": a["created_at"] or "", "seq": 1, "tie": a["id"] or 0,
+                           "category_id": a["category_id"],
+                           "qty": float(a["delta"]), "unit_price": None,
+                           "type": "adjustment"})
+        for s in sales:
+            events.append({"ts": s["created_at"] or "", "seq": 2, "tie": s["sale_item_id"] or 0,
+                           "category_id": s["category_id"],
+                           "qty": float(s["qty"]), "unit_price": None,
+                           "type": "sale"})
+        # identical ordering to the full rebuild: (ts, type, id)
+        events.sort(key=lambda e: (e["ts"], e["seq"], e["tie"]))
+        pools = {}
+        for ev in events:
+            cid = ev["category_id"]
+            if cid not in pools:
+                pools[cid] = {"qty": 0.0, "value": 0.0, "avg": 0.0}
+            pool = pools[cid]
+            if ev["type"] == "purchase":
+                new_qty = pool["qty"] + ev["qty"]
+                new_value = pool["value"] + ev["qty"] * ev["unit_price"]
+                new_avg = (new_value / new_qty) if new_qty > 0 else 0.0
+                pool["qty"] = new_qty; pool["value"] = new_value
+                pool["avg"] = round(new_avg, 2)
+            elif ev["type"] == "adjustment":
+                delta = ev["qty"]
+                if delta < 0:
+                    pool["qty"] += delta
+                    pool["value"] -= round(abs(delta) * pool["avg"], 2)
+                else:
+                    pool["qty"] += delta
+                    pool["value"] += round(delta * pool["avg"], 2)
+                    if pool["qty"] > 0:
+                        pool["avg"] = round(pool["value"] / pool["qty"], 2)
+            elif ev["type"] == "sale":
+                cogs = round(ev["qty"] * pool["avg"], 2)
+                pool["qty"] -= ev["qty"]
+                pool["value"] -= cogs
+        now_ts = datetime.now().strftime("%Y-%m %H:%M:%S")
+        out = {}
+        for cid in ids:
+            pool = pools.get(cid, {"qty": 0.0, "value": 0.0, "avg": 0.0})
+            _save_state(c, cid, pool["qty"], round(pool["value"], 2),
+                        pool["avg"], last_txn_at=now_ts)
+            out[cid] = {"qty": round(pool["qty"], 2),
+                        "value": round(pool["value"], 2),
+                        "avg": round(pool["avg"], 2)}
+        # bags rule parity with full rebuild (idempotent no-op for
+        # already-synced categories)
+        sync_bags_stock_to_sold(c)
+        return out
+
+    if c is not None:
+        return _run(c)
+    with db.write_tx() as own:
+        return _run(own)
+
+
 # ─── Read-only helpers ──────────────────────────────────────────────────────
 
 def get_category_stock_state(category_id: int = None) -> list:

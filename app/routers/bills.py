@@ -1496,6 +1496,7 @@ def delete_bill(bill_id: int, permanent: bool = False) -> Any:
     """
     sup_name = ""
     reversed_stock_lines = 0
+    replayed_categories: list = []
     with db.write_tx() as c:
         row = c.execute(
             "SELECT supplier_name, status, deleted_at FROM bills WHERE id=?",
@@ -1511,6 +1512,17 @@ def delete_bill(bill_id: int, permanent: bool = False) -> Any:
         # soft-delete time). Review bills never touched stock.
         if not already_deleted and row["status"] == "confirmed":
             reversed_stock_lines = _reverse_bill_stock(c, bill_id)
+            # v8.18.16: remember the affected categories — the scoped replay
+            # below (after the deletion is committed within this tx) makes
+            # their running state EXACTLY equal to what a full
+            # rebuild_stock_state() would compute. The incremental reversal
+            # above mirrors the math but diverges when the deleted bill's
+            # stock was already partially sold (qty passes <=0, value clamps
+            # to 0, avg drifts). Replay is authoritative; the reversal stays
+            # as belt-and-braces + drift logging.
+            replayed_categories = [r["category_id"] for r in c.execute(
+                "SELECT DISTINCT category_id FROM bill_items "
+                "WHERE bill_id=? AND category_id IS NOT NULL", (bill_id,))]
         if permanent:
             pages = c.execute(
                 "SELECT filename FROM bill_pages WHERE bill_id=?", (bill_id,)
@@ -1532,14 +1544,40 @@ def delete_bill(bill_id: int, permanent: bool = False) -> Any:
             # Idempotent: soft-deleting an already soft-deleted bill is a no-op
             return {"ok": True, "soft_deleted": True, "idempotent": True,
                     "reversed_stock_lines": 0}
+        # v8.18.16: scoped replay — MUST run after the deleted_at write (or
+        # hard DELETE) above so the replay's bill query actually sees the
+        # deletion; otherwise it would re-include the deleted bill and undo
+        # the reversal. Still inside the same write_tx — atomic with the
+        # delete itself.
+        if replayed_categories:
+            try:
+                profit_mod.rebuild_categories_state(replayed_categories, c=c)
+            except Exception as e:
+                logger.warning(
+                    "scoped stock replay after delete failed (bill %s): %s",
+                    bill_id, e, exc_info=True)
+                profit_mod.log_state_drift(
+                    "rebuild_categories_state", replayed_categories[0], str(e),
+                    {"bill_id": bill_id}, c=c)
+    # v8.18.16: schedule a full rebuild at next boot so the bill-delete also
+    # re-derives historical sale_items.cost_price (the scoped replay above
+    # fixes the LIVE state immediately; this recomputes history). set_setting
+    # opens its own connection, so it must run AFTER the write_tx commits.
+    if reversed_stock_lines or replayed_categories:
+        try:
+            db.set_setting("stock_state_dirty", "true")
+        except Exception:
+            pass
     db.log_activity(
         "bill_deleted", "bill", bill_id,
         f"Deleted bill #{bill_id} ({sup_name})" + (" permanently" if permanent else ""),
         {"supplier": sup_name, "permanent": permanent,
-         "reversed_stock_lines": reversed_stock_lines},
+         "reversed_stock_lines": reversed_stock_lines,
+         "replayed_categories": replayed_categories},
     )
     return {"ok": True, "soft_deleted": not permanent,
-            "reversed_stock_lines": reversed_stock_lines}
+            "reversed_stock_lines": reversed_stock_lines,
+            "replayed_categories": len(replayed_categories)}
 
 
 def _reverse_bill_stock(c, bill_id: int) -> int:
@@ -1626,16 +1664,46 @@ def restore_bill(bill_id: int) -> Any:
             # Idempotent: restoring a live bill is a no-op
             return {"ok": True, "idempotent": True, "reapplied_stock_lines": 0}
         reapplied_stock_lines = 0
+        replayed_categories: list = []
         if row["status"] == "confirmed":
             reapplied_stock_lines = _reapply_bill_stock(c, bill_id)
+            replayed_categories = [r["category_id"] for r in c.execute(
+                "SELECT DISTINCT category_id FROM bill_items "
+                "WHERE bill_id=? AND category_id IS NOT NULL", (bill_id,))]
         c.execute("UPDATE bills SET deleted_at=NULL WHERE id=?", (bill_id,))
+        # v8.18.16: scoped replay AFTER the deleted_at=NULL write above (so
+        # the replay's bill query sees the restored bill). The re-apply above
+        # mirrors the incremental math but diverges when the pre-delete
+        # reversal hit the qty<=0 value clamp. Replay makes the restored
+        # state exactly what a full rebuild would compute — and a
+        # delete → restore round trip returns to the exact pre-delete
+        # (qty, value, avg). Same write_tx — atomic.
+        if replayed_categories:
+            try:
+                profit_mod.rebuild_categories_state(replayed_categories, c=c)
+            except Exception as e:
+                logger.warning(
+                    "scoped stock replay after restore failed (bill %s): %s",
+                    bill_id, e, exc_info=True)
+                profit_mod.log_state_drift(
+                    "rebuild_categories_state", replayed_categories[0], str(e),
+                    {"bill_id": bill_id}, c=c)
         sup_name = row["supplier_name"] or "Unknown"
+    # v8.18.16: mirror the delete's dirty flag — next boot re-derives
+    # historical sale costs from the restored bill set.
+    if reapplied_stock_lines or replayed_categories:
+        try:
+            db.set_setting("stock_state_dirty", "true")
+        except Exception:
+            pass
     db.log_activity(
         "bill_restored", "bill", bill_id,
         f"Restored bill #{bill_id} ({sup_name})",
-        {"supplier": sup_name, "reapplied_stock_lines": reapplied_stock_lines},
+        {"supplier": sup_name, "reapplied_stock_lines": reapplied_stock_lines,
+         "replayed_categories": replayed_categories},
     )
-    return {"ok": True, "reapplied_stock_lines": reapplied_stock_lines}
+    return {"ok": True, "reapplied_stock_lines": reapplied_stock_lines,
+            "replayed_categories": len(replayed_categories)}
 
 
 

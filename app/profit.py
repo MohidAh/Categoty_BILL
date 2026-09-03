@@ -20,6 +20,7 @@ from .profit_engine import (
     reverse_sale_in_state,
     apply_adjustment_to_state,
     rebuild_stock_state,
+    rebuild_categories_state,
     get_category_stock_state,
     _get_setting,
 )
@@ -49,7 +50,8 @@ __all__ = [
     "reverse_purchase_in_state",
     "apply_transfer_out_to_state", "peek_avg_cost", "peek_avg_cost_as_of",
     "reverse_sale_in_state", "apply_adjustment_to_state",
-    "rebuild_stock_state", "get_category_stock_state", "_get_setting",
+    "rebuild_stock_state", "rebuild_categories_state",
+    "get_category_stock_state", "_get_setting",
     # Analytics
     "get_margins", "get_monthly_profit", "get_ytd_profit",
     "get_store_profit_dashboard", "get_daily_stock_report",

@@ -298,3 +298,69 @@ def test_discount_pin_gate_blocks_sell_price_underpricing():
             assert r.status_code == 200, f"list price should pass: {r.text}"
     finally:
         shutil.rmtree(d, ignore_errors=True)
+
+
+def test_bill_delete_restore_round_trip_exact_on_partially_sold_stock():
+    """v8.18.16: deleting a purchase bill whose stock was already partially
+    sold, then restoring it, must return the EXACT pre-delete (qty, value,
+    avg) and the post-delete live state must equal a full rebuild.
+
+    Pre-fix: the incremental reversal's qty<=0 value clamp zeroed pool
+    value; restore re-applied the FULL original value -> running avg cost
+    drifted (80 -> 102.56 in this scenario) until an unrelated full
+    rebuild. The scoped replay (rebuild_categories_state) now runs inside
+    the delete/restore write_tx, so live state == full rebuild at all
+    times."""
+    d = setup_test_db()
+    try:
+        from fastapi.testclient import TestClient
+        from app.main import app
+        from app import db as _db, profit as _profit
+
+        def _st():
+            with _db.conn() as c:
+                s = c.execute(
+                    "SELECT current_qty q, current_value v, current_avg_cost a "
+                    "FROM category_stock_state WHERE category_id=50").fetchone()
+                return (round(s["q"], 2), round(s["v"], 2), round(s["a"], 2))
+
+        with _db.conn() as c:
+            c.execute("INSERT OR REPLACE INTO price_categories(id, name, code, "
+                      "sell_price, active, sort_order) VALUES(50,'Cat ZZ','ZZ',500,1,99)")
+            c.execute("INSERT INTO bills(id, supplier_id, supplier_name, bill_date, "
+                      "bill_no, written_total, computed_total, status, payment_status, "
+                      "created_at) VALUES(9, 1, 'S', '2026-08-10', 'B9', 4000, 4000, "
+                      "'confirmed', 'paid', '2026-08-10 10:00:00')")
+            c.execute("INSERT INTO bill_items(bill_id, category_id, raw, item_code, "
+                      "price, qty, unit, line_total, page_no) "
+                      "VALUES(9, 50, 'ZZ', 'ZZ', 80, 50, 'pcs', 4000, 1)")
+        _profit.rebuild_stock_state()
+        with TestClient(app) as tc:
+            _login(tc)
+            # sell 11 of the 50 purchased @80 -> (39, 3120, 80)
+            r = tc.post("/api/sales", json={
+                "customer_name": "W",
+                "items": [{"category_id": 50, "category_code": "ZZ",
+                           "item_name": "X", "sell_price": 500, "qty": 11}],
+                "payment_method": "cash"})
+            assert r.status_code == 200, r.text
+            before = _st()
+            assert before == (39.0, 3120.0, 80.0), before
+
+            r = tc.delete("/api/bills/9")
+            assert r.status_code == 200, r.text
+            assert r.json()["replayed_categories"] >= 1, r.json()
+            after_del = _st()
+            # live state must equal what a full rebuild computes
+            _profit.rebuild_stock_state()
+            after_rebuild = _st()
+            assert after_del == after_rebuild, (
+                f"live {after_del} != rebuild {after_rebuild}")
+
+            r = tc.post("/api/bills/9/restore")
+            assert r.status_code == 200, r.text
+            after_res = _st()
+            assert after_res == before, (
+                f"round trip {after_res} != original {before}")
+    finally:
+        shutil.rmtree(d, ignore_errors=True)

@@ -405,33 +405,55 @@ def _apply_adjustment_to_state(c, category_id, delta, txn_at=None):
     return {"qty": new_qty, "value": round(new_value, 2), "avg": new_avg}
 
 
-# ─── Bags categories: stock tracks qty SOLD (v8.19.1, unified v8.18.17) ─────
+# ─── Bags categories: virtual purchases + on-hand qty (v8.19.1 → v8.18.17 → v8.18.18) ──
 #
 # BUSINESS RULE (user-defined): shopping-bag categories ("Bag Rs 10/20/30/…",
 # auto-created by the Ezi POS import, or any category named "Bag…"/"Bags" /
 # coded BAG…) do NOT have their purchase bills entered in BillBook — bags are
-# bought as EXPENSES. So the normal "stock = purchased − sold" model can only
-# ever go negative for bags. Instead, the bag category's stock qty follows:
+# bought as EXPENSES. So the plain "stock = purchased − sold" model would go
+# negative for bags the moment they are given away with a sale.
 #
-#     sold = total qty of non-refunded sale_items for the category
-#     if current_qty < sold:  current_qty = sold   ("purchased is raised
-#     else:                   leave it alone        to equal SOLD")
+# USER'S RULE (verbatim intent):
+#   "when sold is greater than purchased, we increase the purchased QTY so
+#    every time our purchased QTY is equal to SOLD. And if purchased QTY is
+#    greater than sold, then don't increase it."
 #
-# i.e. qty = max(purchased, sold) — the number only ever rises to the
-# total-sold level; it is NEVER lowered by the sync (a manual stock
-# adjustment or a higher historical value is never clobbered downward).
+# v8.18.18 model — "purchased" is a VIRTUAL total, current_qty is ON-HAND:
+#     purchased_virtual = max(real_purchases + adjustments, sold)
+#     current_qty       = max(real_purchases + adjustments − sold, 0)
 #
-# UNIFIED MODEL (v8.18.17): bag SALE events never decrement the bag pool on
-# ANY path, so every path computes the same thing:
+#   → No bags bill at all (the normal case — the user's actual data):
+#     purchased_virtual = sold, on-hand = 0. The Current Stock page shows
+#     Qty 0 (nothing on the shelf, exactly what the user expects when no
+#     bags bill was ever entered), while the Purchased column shows the
+#     raised number so bags never look oversold (sold > purchased).
+#   → Real bag bill of 500 with 300 sold: purchased stays 500 (the "don't
+#     increase" case — NOT raised), on-hand = 500 − 300 = 200.
+#
+# The virtual purchased side is applied where it is DISPLAYED (the
+# Purchased column of shop.get_inventory and the daily stock report) — the
+# stock state itself holds the on-hand number. The sync below derives
+# on-hand from the authoritative tables on every run (self-healing,
+# idempotent, and it corrects legacy v8.18.17 states that stored the
+# purchased total in the qty slot).
+#
+# Bag SALE events never decrement the pool on ANY path and reversals never
+# re-add — the sync recomputes from the tables, so nothing can
+# double-count:
 #   - Ezi POS import:      bag lines skip the per-sale decrement; the
-#                          end-of-import sync raises qty to max(qty, sold).
-#   - built-in POS sales:  bag lines skip the decrement too; the sale applies
-#                          the same sync (floor at sold).
-#   - refunds/voids:       bag lines are NEVER re-added (nothing to undo).
-#   - full rebuild:        bag sale events are skipped in the replay; the
-#                          post-replay sync raises qty to max(purchases +
-#                          adjustments, sold). Skipping also preserves the
-#                          original sale_items.cost_price for imported bags
+#                          end-of-import sync lands on-hand at the value
+#                          above.
+#   - built-in POS sales:  bag lines skip the decrement too; the sale
+#                          applies the same scoped sync.
+#   - refunds/voids:       bag lines are never re-added; the scoped sync
+#                          recomputes on-hand (a refunded bag sale stops
+#                          counting as sold, so on-hand rises when real
+#                          bills exist — the bag goes back on the shelf).
+#   - full rebuild:        bag sale events are skipped in the replay
+#                          (purchases/adjustments still replay); the
+#                          post-replay sync lands on the same on-hand.
+#                          Skipping also preserves the original
+#                          sale_items.cost_price for imported bags
 #                          (INVTRANS.COST), instead of overwriting it with
 #                          the (usually zero) bag pool average.
 
@@ -449,15 +471,22 @@ def bag_category_ids(c) -> set:
 
 
 def sync_bags_stock_to_sold(c=None, category_ids=None) -> list:
-    """Apply the bags rule (see block comment above). Returns a list of
-    {category_id, name, from_qty, to_qty} for the categories that were
-    raised; empty list when nothing needed changing.
+    """Apply the bags rule (see block comment above): recompute each bag
+    category's ON-HAND qty = max(purchases + adjustments − sold, 0).
 
-    Safe to call repeatedly (idempotent: once qty == sold it stops matching).
+    The virtual "purchased = max(purchases + adjustments, sold)" side of
+    the user's rule is applied at DISPLAY time (shop.get_inventory's
+    Purchased column, profit_analytics.get_daily_stock_report) — the
+    stock state itself holds the on-hand number.
+
+    Returns a list of {category_id, name, from_qty, to_qty} for the
+    categories whose qty was changed; empty list when nothing needed
+    changing (idempotent — the target is fully derived from the tables,
+    so re-running is a no-op and legacy v8.18.17 states are healed).
     If `c` is provided, uses that connection and does NOT commit;
     otherwise opens its own write_tx().
     `category_ids` (optional) restricts the sync to a subset of bag
-    categories — used by the POS sale path so a sale only touches the
+    categories — used by the POS sale/refund paths so they only touch the
     bag categories actually sold, not every bag in the shop.
     """
     def _run(c):
@@ -466,23 +495,46 @@ def sync_bags_stock_to_sold(c=None, category_ids=None) -> list:
             ids &= {int(x) for x in category_ids if x is not None}
         changed = []
         for cid in ids:
+            # NET sold: SUM(qty) over valid sales, INCLUDING negative lines —
+            # the Ezi import records POS returns as negative qty lines on a
+            # still-paid sale, so netting is the physically-correct "sold".
+            # (Same definition as the inventory/daily-report display queries.)
             sold = c.execute(
                 "SELECT COALESCE(SUM(si.qty), 0) AS s FROM sale_items si "
                 "JOIN sales s ON si.sale_id = s.id "
-                f"WHERE si.category_id=? AND si.qty > 0 AND {db.VALID_SALE_FILTER}",
+                f"WHERE si.category_id=? AND {db.VALID_SALE_FILTER}",
                 (cid,),
             ).fetchone()["s"]
+            # real purchases: confirmed, non-deleted bills (same source
+            # filters as the rebuild replay — so sync == rebuild result)
+            purchased = c.execute(
+                "SELECT COALESCE(SUM(CASE bi.unit WHEN 'dozen' THEN bi.qty*12 "
+                "ELSE bi.qty END), 0) AS p "
+                "FROM bill_items bi JOIN bills b ON bi.bill_id = b.id "
+                "WHERE b.status='confirmed' AND b.deleted_at IS NULL "
+                "AND bi.category_id=? AND bi.price > 0 AND bi.qty > 0",
+                (cid,),
+            ).fetchone()["p"]
+            adj = c.execute(
+                "SELECT COALESCE(SUM(delta), 0) AS a FROM stock_adjustments "
+                "WHERE category_id=?",
+                (cid,),
+            ).fetchone()["a"]
+            # v8.18.18 on-hand: purchases + adjustments − sold, floored at 0.
+            # No bags bill at all → 0 (the user's expectation); real bill
+            # ahead of sold → the purchased-surplus remains on the shelf.
+            target = max(float(purchased) + float(adj) - float(sold), 0.0)
             st = _get_state(c, cid)
-            if st["qty"] < sold:
+            if round(st["qty"], 2) != round(target, 2):
                 name_row = c.execute(
                     "SELECT name FROM price_categories WHERE id=?", (cid,)
                 ).fetchone()
-                _save_state(c, cid, sold, round(sold * st["avg"], 2), st["avg"])
+                _save_state(c, cid, target, round(target * st["avg"], 2), st["avg"])
                 changed.append({
                     "category_id": cid,
                     "name": name_row["name"] if name_row else str(cid),
                     "from_qty": round(st["qty"], 2),
-                    "to_qty": round(sold, 2),
+                    "to_qty": round(target, 2),
                 })
         return changed
 
@@ -558,7 +610,7 @@ def rebuild_stock_state() -> dict:
                        "sale_item_id": None, "type": "adjustment"})
     for s in sales:
         if s["category_id"] in bag_ids:
-            continue  # v8.18.17: bag sales never decrement the pool (unified model)
+            continue  # v8.18.18: bag sales never decrement the pool (unified model)
         events.append({"ts": s["created_at"] or "", "seq": 2, "category_id": s["category_id"],
                        "qty": float(s["qty"]), "unit_price": None,
                        "sale_item_id": s["sale_item_id"], "type": "sale"})
@@ -608,9 +660,10 @@ def rebuild_stock_state() -> dict:
         for sale_item_id, new_cost in new_cost_prices.items():
             c.execute("UPDATE sale_items SET cost_price=? WHERE id=?", (new_cost, sale_item_id))
             rewrote_sales += 1
-        # v8.19.1: bags rule — bag purchases are EXPENSES (never entered as
-        # bills), so a pure replay leaves bag categories at −sold. Raise each
-        # bag category's qty to its total sold inside the same transaction.
+        # v8.18.18: bags rule — the replay leaves bag categories at
+        # purchases+adjustments (bag SALE events are skipped); the sync then
+        # lands each bag category on its ON-HAND value
+        # max(purchases+adjustments − sold, 0) in the same transaction.
         bags_raised = sync_bags_stock_to_sold(c)
 
     categories = []
@@ -624,7 +677,7 @@ def rebuild_stock_state() -> dict:
         })
     log_activity("rebuild_stock_state", "inventory", None,
                  f"Rebuilt stock state: {len(categories)} categories, rewrote {rewrote_sales} sale_items"
-                 + (f", raised {len(bags_raised)} bag category stock(s) to sold" if bags_raised else ""),
+                 + (f", resynced {len(bags_raised)} bag category stock(s) to on-hand" if bags_raised else ""),
                  {"categories": len(categories), "rewrote_sales": rewrote_sales,
                   "bags_raised": bags_raised})
     # PR 8: record last-rebuilt timestamp + clear dirty flag.
@@ -708,10 +761,10 @@ def rebuild_categories_state(category_ids, *, c=None) -> dict:
             "ORDER BY created_at, id",
             tuple(ids),
         ).fetchall()
-        # v8.18.17: bag sale events never decrement the pool (unified bags
-        # model — max(purchased, sold); see the block comment above). Only
-        # the requested categories are checked, and purchases/adjustments
-        # still replay normally for bags.
+        # v8.18.18: bag sale events never decrement the pool (unified bags
+        # model — on-hand is derived by sync_bags_stock_to_sold; see the
+        # block comment above). Only the requested categories are checked,
+        # and purchases/adjustments still replay normally for bags.
         bag_ids = bag_category_ids(c) & set(ids)
         events = []
         for p in purchases:
@@ -726,7 +779,7 @@ def rebuild_categories_state(category_ids, *, c=None) -> dict:
                            "type": "adjustment"})
         for s in sales:
             if s["category_id"] in bag_ids:
-                continue  # v8.18.17: bag sales never decrement the pool (unified model)
+                continue  # v8.18.18: bag sales never decrement the pool (unified model)
             events.append({"ts": s["created_at"] or "", "seq": 2, "tie": s["sale_item_id"] or 0,
                            "category_id": s["category_id"],
                            "qty": float(s["qty"]), "unit_price": None,

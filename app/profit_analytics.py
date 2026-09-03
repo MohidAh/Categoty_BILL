@@ -378,6 +378,16 @@ def get_daily_stock_report(date: str = "") -> dict:
         today_adj = c.execute(
             "SELECT category_id, SUM(delta) AS delta FROM stock_adjustments WHERE date(created_at)=? AND category_id IS NOT NULL GROUP BY category_id", (date,)).fetchall()
         today_adj_map = {r["category_id"]: float(r["delta"] or 0) for r in today_adj}
+        # v8.18.18: bag categories follow the user's sold rule (see the
+        # bags block comment in profit_engine) — their purchases are
+        # virtual (raised so purchased ≥ sold) and their qty never goes
+        # negative. Compute them with the clamped formula below.
+        bag_ids = set()
+        try:
+            from .profit_engine import bag_category_ids as _dsr_bag_ids
+            bag_ids = _dsr_bag_ids(c)
+        except Exception:
+            bag_ids = set()
         all_cat_ids = set(); all_cat_ids.update(opening_map.keys()); all_cat_ids.update(today_purchases_map.keys())
         all_cat_ids.update(today_sales_map.keys()); all_cat_ids.update(today_adj_map.keys())
         cat_meta = {r["id"]: dict(r) for r in c.execute("SELECT id, name, code, sell_price FROM price_categories").fetchall()}
@@ -388,24 +398,39 @@ def get_daily_stock_report(date: str = "") -> dict:
         op = opening_map.get(cat_id, {"qty": 0, "value": 0, "avg_cost": 0})
         sb = sold_before_map.get(cat_id, {"qty": 0, "cogs": 0})
         ab = adj_before_map.get(cat_id, 0)
-        opening_qty = op["qty"] - sb["qty"] + ab
         state = get_category_stock_state(cat_id)
         avg_cost = state[0]["current_avg_cost"] if state else op["avg_cost"]
         tp = today_purchases_map.get(cat_id, {"qty": 0, "value": 0})
         ts = today_sales_map.get(cat_id, {"qty": 0, "sales_value": 0, "cogs": 0})
         ta = today_adj_map.get(cat_id, 0)
-        closing_qty = opening_qty + tp["qty"] - ts["qty"] + ta
+        if cat_id in bag_ids:
+            # v8.18.18: bags — on-hand = max(purchases+adjustments − sold, 0)
+            # on both sides of the day, and purchased_qty absorbs the
+            # virtual raise so the row balances
+            # (opening + purchased − sold = closing) and never shows
+            # bags oversold.
+            p_before = op["qty"] + ab
+            p_total = op["qty"] + tp["qty"] + ab + ta
+            s_before = sb["qty"]
+            s_total = sb["qty"] + ts["qty"]
+            opening_qty = max(p_before - s_before, 0.0)
+            closing_qty = max(p_total - s_total, 0.0)
+            purchased_qty = ts["qty"] + (closing_qty - opening_qty)
+        else:
+            opening_qty = op["qty"] - sb["qty"] + ab
+            closing_qty = opening_qty + tp["qty"] - ts["qty"] + ta
+            purchased_qty = tp["qty"]
         stock_value = closing_qty * avg_cost; sales_value = ts["sales_value"]; cogs = ts["cogs"]
         gross_profit = sales_value - cogs
         rows.append({"date": date, "category_id": cat_id,
                      "category": meta["name"] if isinstance(meta, dict) else "Unknown",
                      "code": meta["code"] if isinstance(meta, dict) else "—",
-                     "opening_qty": round(opening_qty, 2), "purchased_qty": round(tp["qty"], 2),
+                     "opening_qty": round(opening_qty, 2), "purchased_qty": round(purchased_qty, 2),
                      "sold_qty": round(ts["qty"], 2), "closing_qty": round(closing_qty, 2),
                      "average_cost": round(avg_cost, 2), "stock_value": round(stock_value, 2),
                      "sales_value": round(sales_value, 2), "cogs": round(cogs, 2),
                      "gross_profit": round(gross_profit, 2)})
-        totals["opening_qty"] += opening_qty; totals["purchased_qty"] += tp["qty"]
+        totals["opening_qty"] += opening_qty; totals["purchased_qty"] += purchased_qty
         totals["sold_qty"] += ts["qty"]; totals["closing_qty"] += closing_qty
         totals["stock_value"] += stock_value; totals["sales_value"] += sales_value
         totals["cogs"] += cogs; totals["gross_profit"] += gross_profit

@@ -87,6 +87,25 @@ if _dirty.lower() == "true":
 else:
     _logger.info("Stock state dirty flag clear — skipping rebuild (state is consistent).")
 
+# v8.18.18: bags on-hand healing — the bags rule derives each bag category's
+# qty from the tables as max(purchases + adjustments − sold, 0). Installs
+# coming from v8.18.17 hold the virtual purchased TOTAL in the qty slot
+# (e.g. 342 "bags in stock" with no bags bill); one cheap sync at boot
+# lands every bag category on the correct on-hand number (0 when no bags
+# bill was ever entered — the user's expectation). Idempotent: after the
+# first boot it is a no-op until the next import/sale changes something.
+try:
+    from .profit_engine import sync_bags_stock_to_sold as _boot_sync_bags
+    _bags_healed = _boot_sync_bags()
+    if _bags_healed:
+        _logger.info("Bags stock healed to on-hand for %d category(ies): %s",
+                     len(_bags_healed),
+                     ", ".join(f"{b['name']} {b['from_qty']:g}→{b['to_qty']:g}"
+                               for b in _bags_healed))
+except Exception as _bags_e:
+    _logger.error("Boot bags on-hand sync failed: %s — bag qty may be stale "
+                  "until the next POS import or rebuild.", _bags_e)
+
 # Mark as dirty NOW — if the app crashes during operation, the next boot
 # will rebuild. This flag is cleared on clean shutdown (see signal handlers below).
 db.set_setting("stock_state_dirty", "true")

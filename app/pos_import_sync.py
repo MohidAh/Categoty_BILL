@@ -852,10 +852,10 @@ def import_pos_backup(zip_path: str) -> dict:
                 from .profit_engine import apply_sale_to_state
                 for item in sale_items_inserted:
                     if item["category_id"]:
-                        # v8.19.1: bag categories never take the sale decrement
-                        # here — their stock tracks "qty sold" instead (bag
-                        # purchases are expenses, not bills). The end-of-import
-                        # sync_bags_stock_to_sold() raises them to total sold.
+                        # v8.19.1→v8.18.18: bag categories never take the
+                        # sale decrement here — their on-hand is derived by
+                        # the end-of-import sync_bags_stock_to_sold()
+                        # (bag purchases are expenses, not bills).
                         if item["category_id"] in bags_stock_ids:
                             continue
                         try:
@@ -1071,11 +1071,12 @@ def import_pos_backup(zip_path: str) -> dict:
         # ── Finalize the import run ──────────────────────────────────────
         total_sales_amount = round(sum(sales_by_date.values()), 2)
 
-        # v8.19.1: Bags rule — after all sales are in, raise every bag
-        # category's stock to its total qty sold (never downward — see
-        # profit_engine.sync_bags_stock_to_sold). Runs even when this import
-        # added no new bag sales, so the first import after upgrading heals
-        # legacy negative bag stocks too.
+        # v8.19.1→v8.18.18: Bags rule — after all sales are in, recompute
+        # every bag category's ON-HAND qty (max(purchases+adjustments −
+        # sold, 0); see profit_engine.sync_bags_stock_to_sold). Runs even
+        # when this import added no new bag sales, so the first import
+        # after upgrading heals legacy v8.18.17 states (qty held the
+        # virtual purchased total) and legacy negative bag stocks too.
         try:
             from .profit_engine import sync_bags_stock_to_sold as _sync_bags
             bags_stock_synced = _sync_bags()
@@ -1225,11 +1226,14 @@ def delete_pos_import(import_run_id: int) -> dict:
 
         items_to_reverse = []  # list of (category_id, qty)
         customer_reversals = []  # list of (customer_id, total, is_credit)
-        # v8.19.1: bag categories never took the sale decrement on import
-        # (their stock tracks "qty sold" instead) — reversing them here would
-        # double-bump the stock. Exclude them from the reversal.
+        # v8.19.1→v8.18.18: bag categories never took the sale decrement on
+        # import (their on-hand is derived by sync_bags_stock_to_sold) —
+        # reversing them here would double-count. They are collected and
+        # re-synced AFTER the sales are deleted (sold total drops → the
+        # sync recomputes on-hand).
         from .profit_engine import bag_category_ids as _bag_category_ids
         bags_stock_ids = _bag_category_ids(c)
+        bags_touched = set()
         for sale_id in sale_ids:
             for it in c.execute(
                 "SELECT category_id, qty FROM sale_items WHERE sale_id=?",
@@ -1237,7 +1241,8 @@ def delete_pos_import(import_run_id: int) -> dict:
             ).fetchall():
                 if it["category_id"]:
                     if int(it["category_id"]) in bags_stock_ids:
-                        continue  # bag category — stock tracks sold, no reversal
+                        bags_touched.add(int(it["category_id"]))
+                        continue  # bag category — on-hand is derived, no reversal
                     try:
                         items_to_reverse.append((int(it["category_id"]), float(it["qty"])))
                     except (TypeError, ValueError):
@@ -1342,6 +1347,18 @@ def delete_pos_import(import_run_id: int) -> dict:
             "UPDATE pos_imports SET status='deleted' WHERE id=?",
             (import_run_id,)
         )
+
+    # v8.18.18: the run's sales are now hard-deleted — recompute the on-hand
+    # of every bag category the run sold (their qty is derived from the
+    # tables, so deleting bag sales lowers sold and raises on-hand when
+    # real bag bills exist). Opens its own write_tx.
+    bags_resynced = []
+    if bags_touched:
+        try:
+            from .profit_engine import sync_bags_stock_to_sold as _del_sync_bags
+            bags_resynced = _del_sync_bags(category_ids=bags_touched)
+        except Exception as _e:
+            logger.warning("bags resync after import delete failed: %s", _e)
 
     # ── Log the deletion (separate connection, after commit) ────────────
     log_activity(

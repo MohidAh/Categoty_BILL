@@ -1,4 +1,4 @@
-"""v8.18.17 — Bags QTY rule: the user's exact spec, end to end.
+"""v8.18.18 — Bags QTY rule: the user's exact spec, end to end.
 
 USER SPEC (verbatim intent):
     "when we import from POS and our system has bags QTY (300), and when we
@@ -6,18 +6,24 @@ USER SPEC (verbatim intent):
     then we increase the purchased QTY so every time our purchased QTY is
     equal to SOLD. And if purchased QTY is greater than sold, then don't
     increase it."
+    …and (v8.18.18 follow-up): "when I haven't added a bags bill it should
+    be 0 — I haven't purchased any bags."
 
-Invariant on EVERY path (Ezi import, generic CSV import, built-in POS sale,
+Model on EVERY path (Ezi import, generic CSV import, built-in POS sale,
 full rebuild, scoped replay, refund, void, import-delete):
 
-    bag qty = max(purchased_or_prior_qty, total_sold_valid_sales)
-    — raised to equal SOLD when sold passes it
-    — never lowered when purchased is ahead
+    virtual purchased = max(purchases + adjustments, sold)   (display side)
+    on-hand qty       = max(purchases + adjustments − sold, 0)  (state side)
+
+    → no bags bill (the normal case): purchased = SOLD (raised, per the
+      rule) and the Current Stock page shows Qty 0 (nothing on the shelf).
+    → real bag bill of 500 with 300 sold: purchased stays 500 (NOT
+      increased — "don't increase") and on-hand = 200 (the surplus).
 
 Tests below use the user's exact numbers (300 / 450 / 500 / 300) through the
 REAL Ezi DBF import pipeline (FakeDBF patch, same pattern as test_pos_import.py),
 the REAL built-in POS sale creation (FastAPI TestClient), the REAL refund
-endpoint, and the REAL rebuild.
+endpoint, the REAL rebuild, and the REAL /api/inventory + daily-stock report.
 """
 import os
 import zipfile
@@ -45,6 +51,20 @@ def _mk_category(name, code, sell_price=20.0, active=1):
             "INSERT INTO price_categories(name, code, sell_price, active) "
             "VALUES(?,?,?,?)", (name, code, sell_price, active))
         return cur.lastrowid
+
+
+def _mk_bill(cat, qty, price=16.0, bill_date="2026-07-01"):
+    """A real purchase bill for a category. Returns bill_item id."""
+    with db.conn() as c:
+        cur = c.execute(
+            "INSERT INTO bills(supplier_name, status, payment_status, bill_date) "
+            "VALUES('Bag Supplier', 'confirmed', 'paid', ?)", (bill_date,))
+        bid = cur.lastrowid
+        c.execute(
+            "INSERT INTO bill_items(bill_id, raw, category_id, price, qty, "
+            "line_total) VALUES(?,?,?,?,?,?)",
+            (bid, "bags", cat, price, qty, price * qty))
+        return bid
 
 
 def _mk_sale(items, payment_status="paid", created_at="2026-08-10 10:00:00"):
@@ -75,6 +95,14 @@ def _stock(cid):
 def _set_stock(cid, qty, avg=0.0):
     with db.conn() as c:
         _save_state(c, cid, qty, round(qty * avg, 2), avg)
+
+
+def _inv_row(cid):
+    from app.shop import get_inventory
+    for row in get_inventory():
+        if row["category_id"] == cid:
+            return row
+    return None
 
 
 class BagFakeDBF:
@@ -171,94 +199,114 @@ def ezi_patch():
 
 # ─── THE USER'S EXACT SCENARIO — via the real Ezi import ────────────────────
 
-def test_users_exact_scenario_300_raised_to_450(tmp_db_path, ezi_patch):
-    """System has bags QTY 300; import brings total sold to 450 →
-    purchased QTY is increased so it equals SOLD (450)."""
+def test_users_exact_scenario_300_raised_to_450_no_bill(tmp_db_path, ezi_patch):
+    """System has bags QTY 300 (v8.18.17-style phantom state — no bags bill);
+    import brings total sold to 450.
+
+    Per the rule: purchased QTY is raised so purchased == SOLD (450 — the
+    Purchased column shows 450), and the Current Stock page shows the
+    ON-HAND number: 0. No bags bill was ever entered, so there is nothing
+    on the shelf. The phantom 300 in the qty slot is healed to 0."""
     bag = _mk_category("Bag Rs 20", "BAG20")
     _set_stock(bag, 300.0)                    # system's current bag QTY: 300
     ezi_patch.reset([("BG001", 150, "2026-09-01"),
                      ("BG002", 300, "2026-09-02")])   # +450 sold this import
     result = _run_ezi_import("300to450")
     assert result["imported_sales"] == 2
-    assert _stock(bag) == 450.0, (
-        "sold (450) > purchased (300) → purchased QTY must be raised to 450")
-    # the sync result is reported back to the caller
+    assert _stock(bag) == 0.0, (
+        "no bags bill → on-hand qty must be 0 (sold 450 > purchased 0; the "
+        "virtual purchased total is raised to 450 at display time)")
+    # the heal is reported back to the caller (300 → 0)
     assert any(ch["category_id"] == bag and ch["from_qty"] == 300.0
-               and ch["to_qty"] == 450.0
+               and ch["to_qty"] == 0.0
                for ch in result["bags_stock_synced"])
+    # display side: the user's rule — purchased QTY equal to SOLD
+    row = _inv_row(bag)
+    assert row["purchased"] == 450, "purchased must be raised to equal SOLD"
+    assert row["sold"] == 450
+    assert row["stock"] == 0
+
+
+def test_users_exact_scenario_bill_300_sold_450(tmp_db_path, ezi_patch):
+    """Same scenario, but the 300 is a REAL bill: purchased 300, import
+    brings sold to 450 → purchased display raised to 450, on-hand 0
+    (300 real bags + the rest auto-raised — all given away)."""
+    bag = _mk_category("Bag Rs 20", "BAG20")
+    _mk_bill(bag, 300)
+    _set_stock(bag, 300.0, avg=16.0)
+    ezi_patch.reset([("BG003", 150, "2026-09-01"),
+                     ("BG004", 300, "2026-09-02")])
+    _run_ezi_import("bill300")
+    assert _stock(bag) == 0.0, "on-hand = max(300 − 450, 0) = 0"
+    row = _inv_row(bag)
+    assert row["purchased"] == 450, "purchased display raised to SOLD (450)"
+    assert row["stock"] == 0
 
 
 def test_users_exact_scenario_500_above_sold_300_untouched(tmp_db_path, ezi_patch):
-    """System has bags QTY 500 (purchased); import shows sold 300 →
-    purchased QTY is greater than sold → DO NOT increase (stay 500)."""
+    """Real bag bill of 500; import shows sold 300 → purchased is NOT
+    increased (stays 500) and on-hand keeps the purchased-surplus (200)."""
     bag = _mk_category("Bag Rs 20", "BAG20")
-    _set_stock(bag, 500.0)                    # purchased ahead: 500
+    _mk_bill(bag, 500)
+    _set_stock(bag, 500.0, avg=16.0)
     ezi_patch.reset([("BG010", 300, "2026-09-01")])   # sold 300 < 500
     result = _run_ezi_import("500over300")
-    assert _stock(bag) == 500.0, (
-        "purchased (500) > sold (300) → qty must NOT be touched")
-    assert not any(ch["category_id"] == bag
-                   for ch in result["bags_stock_synced"])
+    assert _stock(bag) == 200.0, (
+        "purchased (500) > sold (300) → on-hand keeps the surplus 500−300")
+    row = _inv_row(bag)
+    assert row["purchased"] == 500, "purchased must NOT be increased past the real bill"
+    assert row["stock"] == 200
 
 
-def test_import_repeated_sold_never_lowers_qty(tmp_db_path, ezi_patch):
-    """Re-import / cumulative imports only ever RAISE to the new sold level —
-    qty never decreases (idempotent, raise-only)."""
+def test_import_repeated_stays_zero_without_bills(tmp_db_path, ezi_patch):
+    """Cumulative re-imports: sold rises (100 → 150) but with no bags bill
+    the on-hand stays 0 and the purchased display follows sold."""
     bag = _mk_category("Bag Rs 20", "BAG20")
     _set_stock(bag, 0.0)
     ezi_patch.reset([("BG020", 100, "2026-09-01")])
     _run_ezi_import("raise1")
-    assert _stock(bag) == 100.0
+    assert _stock(bag) == 0.0
+    assert _inv_row(bag)["purchased"] == 100
     ezi_patch.reset([("BG020", 100, "2026-09-01"),
                      ("BG021", 50, "2026-09-02")])
     r2 = _run_ezi_import("raise2")            # cumulative backup: +1 new sale
     assert r2["imported_sales"] == 1
-    assert _stock(bag) == 150.0, "cumulative import raises qty to new sold"
-    # deleting the sale in the source POS (sync deletion → refunded) never
-    # LOWERS the bag qty (raise-only guard)
-    _mk_sale([(bag, 0)])  # no-op, keeps ids unique
+    assert _stock(bag) == 0.0, "still no bags bill → still 0 on-hand"
+    assert _inv_row(bag)["purchased"] == 150
 
 
 # ─── rebuild paths compute the same number ─────────────────────────────────
 
-def test_rebuild_with_bill_500_sold_300_stays_500(tmp_db_path):
-    """Regression (v8.18.17): a bag category with a purchase bill of 500 and
-    300 sold must stay at 500 after a FULL rebuild — the old replay
-    subtracted sales (500−300=200) then raised to 300, wrongly LOWERING the
-    purchased qty. The user's rule says: purchased > sold → don't touch."""
+def test_rebuild_with_bill_500_sold_300_lands_on_200(tmp_db_path):
+    """A bag category with a purchase bill of 500 and 300 sold: the full
+    rebuild must land on the on-hand number 200 (the v8.18.17 bug kept 500
+    in the qty slot — purchased total, not on-hand)."""
     bag = _mk_category("Bag Rs 20", "BAG20")
-    with db.conn() as c:
-        cur = c.execute(
-            "INSERT INTO bills(supplier_name, status, payment_status, bill_date) "
-            "VALUES('Bag Supplier', 'confirmed', 'paid', '2026-07-01')")
-        bid = cur.lastrowid
-        c.execute(
-            "INSERT INTO bill_items(bill_id, raw, category_id, price, qty, "
-            "line_total) VALUES(?,?,?,?,?,?)",
-            (bid, "bags", bag, 16.0, 500, 8000.0))
+    _mk_bill(bag, 500)
     _mk_sale([(bag, 300)], created_at="2026-08-05 10:00:00")
     _set_stock(bag, 500.0, avg=16.0)
 
     rebuild_stock_state()
-    assert _stock(bag) == 500.0, (
-        "rebuild: purchased 500 > sold 300 → bag qty must stay 500, not 300")
+    assert _stock(bag) == 200.0, (
+        "rebuild: on-hand = purchased 500 − sold 300 = 200")
+    assert _inv_row(bag)["purchased"] == 500
 
 
-def test_rebuild_no_bills_sold_450_raises_to_450(tmp_db_path):
-    """No bag bills (bags bought as expenses — the normal case): replay
-    leaves the bag at 0 purchases; the post-replay sync raises to sold."""
+def test_rebuild_no_bills_sold_450_lands_on_0(tmp_db_path):
+    """No bag bills (bags bought as expenses — the normal case): rebuild
+    leaves the bag at 0 on-hand (not 450, not −450)."""
     bag = _mk_category("Bag Rs 20", "BAG20")
     _mk_sale([(bag, 200)], created_at="2026-08-01 10:00:00")
     _mk_sale([(bag, 250)], created_at="2026-08-02 10:00:00")
     _set_stock(bag, 200.0)
     rebuild_stock_state()
-    assert _stock(bag) == 450.0
+    assert _stock(bag) == 0.0
 
 
 def test_rebuild_preserves_imported_bag_cost_price(tmp_db_path):
-    """v8.18.17 side-fix: the full rebuild used to overwrite imported bag
-    sale_items.cost_price with the bag pool avg (0 when no bills) — wiping
-    the real INVTRANS.COST COGS. Skipping bag sale events preserves it."""
+    """v8.18.17 side-fix kept: the full rebuild must not overwrite imported
+    bag sale_items.cost_price with the bag pool avg (0 when no bills) — the
+    real INVTRANS.COST COGS stays. Skipping bag sale events preserves it."""
     bag = _mk_category("Bag Rs 20", "BAG20")
     with db.conn() as c:
         cur = c.execute(
@@ -281,20 +329,12 @@ def test_rebuild_preserves_imported_bag_cost_price(tmp_db_path):
 
 
 def test_scoped_replay_after_bag_bill_delete(tmp_db_path):
-    """Deleting a bag bill: purchases drop; if that leaves purchased below
-    sold, qty lands on sold (purchased raised to equal SOLD); non-bag
-    categories replay normally."""
+    """Deleting a bag bill: purchases drop to 0 → on-hand lands on 0 (sold
+    300 with nothing purchased); non-bag categories replay normally."""
     bag = _mk_category("Bag Rs 20", "BAG20")
     normal = _mk_category("Item 250", "A")
+    bid = _mk_bill(bag, 500)
     with db.conn() as c:
-        cur = c.execute(
-            "INSERT INTO bills(supplier_name, status, payment_status, bill_date) "
-            "VALUES('Bag Supplier', 'confirmed', 'paid', '2026-07-01')")
-        bid = cur.lastrowid
-        c.execute(
-            "INSERT INTO bill_items(bill_id, raw, category_id, price, qty, "
-            "line_total) VALUES(?,?,?,?,?,?)",
-            (bid, "bags", bag, 16.0, 500, 8000.0))
         cur2 = c.execute(
             "INSERT INTO bills(supplier_name, status, payment_status, bill_date) "
             "VALUES('Paper Supplier', 'confirmed', 'paid', '2026-07-02')")
@@ -307,14 +347,14 @@ def test_scoped_replay_after_bag_bill_delete(tmp_db_path):
     _mk_sale([(normal, 20)], created_at="2026-08-06 10:00:00")
     _set_stock(bag, 500.0, avg=16.0)
 
-    # delete the bag bill → purchased drops to 0 → qty must land on sold (300)
+    # delete the bag bill → purchased drops to 0 → on-hand must be 0
     with db.write_tx() as c:
         c.execute("UPDATE bills SET deleted_at=? WHERE id=?",
                   (datetime.now().strftime("%Y-%m-%d %H:%M:%S"), bid))
         rebuild_categories_state([bag, normal], c=c)
 
-    assert _stock(bag) == 300.0, (
-        "bag bill deleted → purchased 0 < sold 300 → qty = sold (300)")
+    assert _stock(bag) == 0.0, (
+        "bag bill deleted → purchased 0 < sold 300 → on-hand 0")
     assert _stock(normal) == 80.0
 
 
@@ -346,53 +386,90 @@ def _pos_sale(client, bag, qty, price=20.0):
     })
 
 
-def test_pos_native_bag_sale_never_decrements_and_tracks_sold(client):
-    """A bag sold from the built-in POS: qty must NOT go down (old behavior
-    decremented like any category); it stays and rises with total sold."""
+def test_pos_bag_sale_no_bill_stays_zero_and_never_negative(client):
+    """Selling bags from the built-in POS with no bags bill: on-hand stays 0
+    forever (never negative — the old model could go below zero)."""
     bag = _mk_category("Bag Rs 20", "BAG20")
-    _set_stock(bag, 300.0)
+    _set_stock(bag, 0.0)
 
-    r = _pos_sale(client, bag, 10)
-    assert r.status_code == 200, r.text
-    assert _stock(bag) == 300.0, (
-        "POS bag sale must not decrement — 300 stays; sold (10) < 300 so no raise")
-
-
-def test_pos_native_bag_sale_raises_qty_when_sold_passes_it(client):
-    bag = _mk_category("Bag Rs 20", "BAG20")
-    _set_stock(bag, 300.0)
-    # sell 200 → sold = 200 < 300 (no raise); sell another 150 → 350 > 300
-    assert _pos_sale(client, bag, 200).status_code == 200
-    assert _stock(bag) == 300.0
+    assert _pos_sale(client, bag, 10).status_code == 200
     assert _pos_sale(client, bag, 150).status_code == 200
-    assert _stock(bag) == 350.0, (
-        "sold (350) passed purchased (300) → qty raised to equal SOLD")
+    assert _stock(bag) == 0.0
+    assert _inv_row(bag)["purchased"] == 160, "purchased display follows sold"
 
 
-def test_refund_of_pos_bag_sale_does_not_bump_stock(client):
-    """Refund endpoint (PIN-gated /api/sales/{id}/refund): bag lines are
-    skipped — refunding never re-adds bag qty (nothing was decremented)."""
+def test_pos_bag_sale_with_bill_eats_into_surplus(client):
+    """Real bag bill of 500: each POS bag sale reduces the on-hand surplus
+    via the scoped sync (500 → 490 → 475)."""
     bag = _mk_category("Bag Rs 20", "BAG20")
-    _set_stock(bag, 300.0)
+    _mk_bill(bag, 500)
+    _set_stock(bag, 500.0, avg=16.0)
+
+    assert _pos_sale(client, bag, 10).status_code == 200
+    assert _stock(bag) == 490.0
+    assert _pos_sale(client, bag, 15).status_code == 200
+    assert _stock(bag) == 475.0
+    assert _inv_row(bag)["purchased"] == 500, "bill ahead of sold → not raised"
+
+
+def test_pos_bag_sale_not_blocked_by_strict_stock_guard(client):
+    """v8.18.18: the strict stock strategy must NEVER block a bag sale —
+    bag on-hand is intentionally 0/derived (auto-managed category)."""
+    bag = _mk_category("Bag Rs 20", "BAG20")
+    _set_stock(bag, 0.0)                      # on-hand 0
+    db.set_setting("stock_strategy", "strict")
+    try:
+        r = _pos_sale(client, bag, 5)
+        assert r.status_code == 200, (
+            f"strict guard must not block bag sales: {r.status_code} {r.text}")
+    finally:
+        db.set_setting("stock_strategy", "strict")
+    # a normal category IS still guarded (guard itself still works)
+    normal = _mk_category("Item 250", "A")
+    _set_stock(normal, 0.0)
+    r = client.post("/api/sales", json={
+        "items": [{"category_id": normal, "item_name": "item",
+                   "qty": 1, "sell_price": 250.0}],
+        "payment_method": "cash"})
+    assert r.status_code == 409, "guard still active for normal categories"
+
+
+def test_refund_of_pos_bag_sale(client):
+    """Refunding a bag sale: with no bills, on-hand stays 0 (no bump);
+    with a real bill the returned bag goes back on the shelf."""
+    # (a) no bags bill — nothing to bump
+    bag = _mk_category("Bag Rs 20", "BAG20")
+    _set_stock(bag, 0.0)
     db.set_setting("require_pin_for_refund", "false")
     r = _pos_sale(client, bag, 40)
     sale_id = r.json()["id"]
-    assert _stock(bag) == 300.0
+    assert _stock(bag) == 0.0
 
     rr = client.post(f"/api/sales/{sale_id}/refund", json={"reason": "test"})
     assert rr.status_code == 200, rr.text
-    assert _stock(bag) == 300.0, "refund must not bump bag stock"
+    assert _stock(bag) == 0.0, "no bills → refund must not bump bag stock"
+
+    # (b) real bill — the refunded bags return to the shelf
+    bag2 = _mk_category("Bag Rs 30", "BAG30")
+    _mk_bill(bag2, 500)
+    _set_stock(bag2, 500.0, avg=16.0)
+    r2 = _pos_sale(client, bag2, 40)
+    sale_id2 = r2.json()["id"]
+    assert _stock(bag2) == 460.0
+    rr2 = client.post(f"/api/sales/{sale_id2}/refund", json={"reason": "test"})
+    assert rr2.status_code == 200, rr2.text
+    assert _stock(bag2) == 500.0, "refunded bags go back on the shelf"
 
 
 # ─── generic CSV import path ────────────────────────────────────────────────
 
 def test_generic_csv_import_applies_bags_rule(tmp_db_path):
-    """The generic CSV import (legacy path) inserts sales without touching
-    stock state — but bag categories must still get the end-of-import sync
-    (v8.18.17) so bag qty equals total sold after ANY import route."""
+    """The generic CSV import (legacy path): bag categories get the
+    end-of-import sync — on-hand 0 with no bags bill, purchased display
+    raised to sold."""
     from app import pos_import
     bag = _mk_category("Bag Rs 20", "BAG20")
-    _set_stock(bag, 300.0)
+    _set_stock(bag, 300.0)                    # legacy phantom state
 
     rows = [
         {"inv": "CSV1", "date": "2026-09-01", "item": "Bag Rs 20",
@@ -407,8 +484,69 @@ def test_generic_csv_import_applies_bags_rule(tmp_db_path):
                "payment_method": "pay", "category": "category"}
     result = pos_import.import_pos_backup(rows, mapping, source_name="csv")
     assert result["imported_sales"] == 2
-    assert _stock(bag) == 450.0, (
-        "CSV import with sold 450 > purchased 300 → bag qty raised to 450")
+    assert _stock(bag) == 0.0, (
+        "CSV import: no bags bill → on-hand 0 (phantom 300 healed)")
+    assert _inv_row(bag)["purchased"] == 450
+
+
+# ─── daily stock report never shows bags negative ───────────────────────────
+
+def test_daily_stock_report_bags_never_negative(tmp_db_path):
+    """The 11-column daily stock report: bag rows are clamped (never
+    negative), purchased_qty shows the virtual raise so the row balances,
+    and closing is 0 when no bags bill exists."""
+    from app.profit_analytics import get_daily_stock_report
+    bag = _mk_category("Bag Rs 20", "BAG20")
+    # 12 bags sold on 2026-09-01, none before, no bills
+    _mk_sale([(bag, 12)], created_at="2026-09-01 10:00:00")
+
+    rep = get_daily_stock_report("2026-09-01")
+    row = next(r for r in rep["rows"] if r["category_id"] == bag)
+    assert row["opening_qty"] == 0
+    assert row["purchased_qty"] == 12, "purchased shows the virtual raise (= sold)"
+    assert row["sold_qty"] == 12
+    assert row["closing_qty"] == 0, "no bills → closing 0, never negative"
+
+
+def test_daily_stock_report_bags_with_real_bill(tmp_db_path):
+    """Real bill of 500 (before the report date), 300 sold before the date:
+    opening 200, and the day's sales just reduce it."""
+    from app.profit_analytics import get_daily_stock_report
+    bag = _mk_category("Bag Rs 20", "BAG20")
+    _mk_bill(bag, 500, bill_date="2026-07-01")
+    _mk_sale([(bag, 300)], created_at="2026-08-05 10:00:00")
+    _mk_sale([(bag, 5)], created_at="2026-09-01 10:00:00")
+
+    rep = get_daily_stock_report("2026-09-01")
+    row = next(r for r in rep["rows"] if r["category_id"] == bag)
+    assert row["opening_qty"] == 200, "500 bought − 300 sold = 200 opening"
+    assert row["purchased_qty"] == 0, "bill ahead of sold → no raise today"
+    assert row["sold_qty"] == 5
+    assert row["closing_qty"] == 195
+
+
+# ─── /api/inventory presentation of the rule ────────────────────────────────
+
+def test_inventory_bag_row_flags_and_columns(tmp_db_path):
+    """Bag rows: purchased == sold (no bills), stock 0, and NO low/out
+    alerts — bags are auto-managed, not restock items."""
+    bag = _mk_category("Bag Rs 20", "BAG20")
+    normal = _mk_category("Item 250", "A")
+    _mk_bill(normal, 5, price=10.0)            # normal cat: 5 on hand → low
+    _mk_sale([(bag, 7)], created_at="2026-08-01 10:00:00")
+    rebuild_stock_state()                       # builds normal's state row
+
+    brow = _inv_row(bag)
+    assert brow["purchased"] == 7 and brow["sold"] == 7
+    assert brow["stock"] == 0
+    assert brow["auto_managed_stock"] is True
+    assert brow["low_stock"] is False, "bags never raise low-stock alerts"
+    assert brow["out_of_stock"] is False, "bags never raise out-of-stock alerts"
+
+    nrow = _inv_row(normal)
+    assert nrow["stock"] == 5
+    assert nrow["auto_managed_stock"] is False
+    assert nrow["low_stock"] is True, "normal low-stock alert still works"
 
 
 if __name__ == "__main__":

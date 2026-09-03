@@ -33,6 +33,14 @@ def get_inventory() -> list:
     There may be a small drift between `purchased - sold + adjustments` and
     `stock` if the materialized state was rebuilt — that's expected; the
     materialized state is authoritative.
+
+    v8.18.18: BAG categories apply the user's sold rule at display time:
+    `purchased` shows the VIRTUAL total max(purchases + adjustments, sold)
+    ("our purchased QTY is equal to SOLD"; never above it when a real bill
+    is ahead — "don't increase"), while `stock` is the on-hand number
+    max(purchases + adjustments − sold, 0) from the state — 0 when no bags
+    bill was ever entered. Bag rows never raise low/out-of-stock alerts
+    (their supply is auto-managed by the rule, not by restocking).
     """
     with conn() as c:
         # v8.7.1 fix: include ALL categories (active=0 too) so that stock_state
@@ -71,6 +79,13 @@ def get_inventory() -> list:
             "FROM stock_adjustments WHERE category_id IS NOT NULL "
             "GROUP BY category_id"
         ).fetchall()
+        # v8.18.18: bag categories (user's sold rule — see the docstring)
+        bag_ids = set()
+        try:
+            from .profit_engine import bag_category_ids as _inv_bag_ids
+            bag_ids = _inv_bag_ids(c)
+        except Exception:
+            bag_ids = set()
     state_map = {r["category_id"]: r for r in state_rows}
     purchased_map = {r["category_id"]: float(r["total"] or 0) for r in purchased_rows}
     sold_map = {r["category_id"]: float(r["total"] or 0) for r in sold_rows}
@@ -106,6 +121,19 @@ def get_inventory() -> list:
         adjustments = adj_map.get(cat_id, 0)
 
         sell_price = float(p["sell_price"] or 0)
+        is_bag = cat_id in bag_ids
+        if is_bag:
+            # v8.18.18 user's rule, display side: purchased is raised to
+            # SOLD when sold passes it ("our purchased QTY is equal to
+            # SOLD"), and NOT increased when a real bill is ahead
+            # ("purchased > sold → don't increase").
+            purchased = max(purchased + adjustments, sold)
+        low_flag = stock < 10
+        out_flag = stock <= 0
+        neg_flag = stock < 0
+        if is_bag:
+            # bags are auto-managed by the sold rule — never alert on them
+            low_flag = out_flag = neg_flag = False
         result.append({
             "category_id": cat_id,
             "category_name": p["name"] or "Unknown",
@@ -117,15 +145,17 @@ def get_inventory() -> list:
             "stock_value": round(stock_value, 2),
             "potential_revenue": round(stock * sell_price, 2),
             "potential_profit": round(stock * (sell_price - avg_cost), 2),
-            "low_stock": stock < 10,
-            "out_of_stock": stock <= 0,
-            "negative_stock": stock < 0,
+            "low_stock": low_flag,
+            "out_of_stock": out_flag,
+            "negative_stock": neg_flag,
             # v8.7: informational movement columns (NOT used to compute `stock`)
             "purchased": int(purchased) if purchased == int(purchased) else round(purchased, 2),
             "sold": int(sold) if sold == int(sold) else round(sold, 2),
             "adjustments": int(adjustments) if adjustments == int(adjustments) else round(adjustments, 2),
             # v8.7.2: orphan flag (False here — this category exists)
             "missing_category": False,
+            # v8.18.18: bag rule marker (frontend can style/annotate)
+            "auto_managed_stock": is_bag,
         })
 
     # v8.7.2: append orphan stock_state rows (category_ids not in price_categories)

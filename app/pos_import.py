@@ -390,12 +390,14 @@ def import_pos_backup(rows: list, mapping: dict, source_name: str = "",
     if not import_date:
         import_date = date_range_end or datetime.now().strftime("%Y-%m-%d")
 
-    # v8.18.17: bags rule — imported bag-category sales must raise the bag
-    # category's stock qty to the new total-sold level (never lower it).
-    # The Ezi DBF pipeline (pos_import_sync) does this at end-of-import;
-    # this generic CSV/Excel/JSON path needs the same sync so bag qty
-    # equals total sold after every import route. Non-bag stock state is
-    # NOT touched here (this legacy path predates stock-state tracking).
+    # v8.18.18: bags rule — imported bag-category sales must keep the bag
+    # categories' ON-HAND qty at max(purchases+adjustments − sold, 0)
+    # (the virtual "purchased raised to SOLD" side is applied at display
+    # time — see the bags block comment in profit_engine). The Ezi DBF
+    # pipeline (pos_import_sync) does this at end-of-import; this generic
+    # CSV/Excel/JSON path needs the same sync so every import route lands
+    # on the same number. Non-bag stock state is NOT touched here (this
+    # legacy path predates stock-state tracking).
     bags_synced = []
     try:
         from .profit_engine import sync_bags_stock_to_sold as _sync_bags

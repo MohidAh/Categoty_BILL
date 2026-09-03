@@ -429,11 +429,16 @@ def profit_analysis_report(start: str, end: str, group_by: str = "category") -> 
     with conn() as c:
         if group_by == "month":
             # Monthly breakdown
+            # v8.18.16: revenue now comes from sales.total (what the customer
+            # actually paid — post line-level AND sale-level discount), NOT
+            # SUM(si.sell_price * qty). The old raw-item-sum basis made the
+            # month view of THIS report disagree with its own category view
+            # (which allocates sales.total, v8.16.13) and with P&L / Store
+            # Profit whenever any discount was applied — the exact
+            # "report shows extra sales" complaint.
             rows = c.execute(
                 "SELECT strftime('%Y-%m', COALESCE(s.created_at, datetime('now'))) AS month, "
-                "COALESCE(SUM(si.sell_price * si.qty), 0) AS revenue, "
                 "COALESCE(SUM(si.cost_price * si.qty), 0) AS cogs, "
-                "COALESCE(SUM((si.sell_price - si.cost_price) * si.qty), 0) AS gross_profit, "
                 "COALESCE(SUM(si.qty), 0) AS qty_sold "
                 "FROM sale_items si JOIN sales s ON si.sale_id = s.id "
                 f"WHERE {db.VALID_SALE_FILTER} "
@@ -441,6 +446,12 @@ def profit_analysis_report(start: str, end: str, group_by: str = "category") -> 
                 "GROUP BY month ORDER BY month",
                 (start, end),
             ).fetchall()
+            rev_map = {r["month"]: float(r["v"] or 0) for r in c.execute(
+                "SELECT strftime('%Y-%m', COALESCE(created_at, datetime('now'))) AS month, "
+                "COALESCE(SUM(total), 0) AS v FROM sales "
+                f"WHERE {db.VALID_SALE_FILTER_NO_ALIAS} "
+                "AND date(created_at) >= ? AND date(created_at) <= ? GROUP BY month",
+                (start, end)).fetchall()}
             # Get operating expenses per month
             exp_rows = c.execute(
                 "SELECT strftime('%Y-%m', e.date) AS month, "
@@ -465,9 +476,12 @@ def profit_analysis_report(start: str, end: str, group_by: str = "category") -> 
             months = []
             seen_months = set()
             for r in rows:
-                rev = float(r["revenue"] or 0)
+                # v8.18.16: revenue from sales.total (see note above);
+                # gross profit derives from it so the P&L identity
+                # gross_profit = revenue - cogs holds month by month.
+                rev = rev_map.get(r["month"], 0.0)
                 cogs = float(r["cogs"] or 0)
-                gp = float(r["gross_profit"] or 0)
+                gp = rev - cogs
                 op_exp = exp_map.get(r["month"], 0)
                 m_extra = extra_rows.get(r["month"], 0.0)
                 # v8.18.14: operating profit includes extra-sales income
@@ -534,8 +548,10 @@ def profit_analysis_report(start: str, end: str, group_by: str = "category") -> 
                 # COGS is unambiguous — uses cost_price captured at sale time
                 "COALESCE(SUM(si.cost_price * si.qty), 0) AS cogs, "
                 # Qty + line items sum (for proportional revenue allocation)
+                # v8.18.16: weight by line_total (actual charged) instead of
+                # sell_price*qty — line discounts now attribute correctly.
                 "COALESCE(SUM(si.qty), 0) AS qty_sold, "
-                "COALESCE(SUM(si.sell_price * si.qty), 0) AS items_revenue, "
+                "COALESCE(SUM(COALESCE(si.line_total, si.sell_price * si.qty)), 0) AS items_revenue, "
                 "COUNT(DISTINCT si.sale_id) AS sale_count, "
                 "COALESCE(css.current_avg_cost, 0) AS current_avg_cost "
                 "FROM sale_items si "
@@ -672,12 +688,38 @@ def sold_stock_report(start: str, end: str, group_by: str = "category") -> dict:
         NOTE: item_name is AI-extracted free text — expect fragmentation.
 
     Excludes refunded sales (payment_status='refunded').
+
+    v8.18.16: revenue/gross_profit are line_total-based (what was actually
+    charged per line, incl. line discounts) — consistent with Profit
+    Analysis / Store Profit instead of overstating them. Top-level
+    sale_discounts/loyalty_discounts expose the sale-level discounts that
+    cannot be attributed to a category, so the report page can reconcile
+    against the Profit Analysis total.
     """
     if not start or not end:
         return {"error": "start and end dates are required (YYYY-MM-DD)"}
     result = {"start": start, "end": end, "group_by": group_by}
 
     with conn() as c:
+        # v8.18.16: sale-level discounts given in the period. Sold Stock
+        # revenue is per-line (line_total), so a sale-level discount is not
+        # attributable to any category/item — exposing it here lets the
+        # report page reconcile: line revenue + sale discounts (+ loyalty
+        # discounts) = what the customer paid (Profit Analysis revenue,
+        # before any tax). Previously users just saw two reports disagree.
+        try:
+            disc_row = c.execute(
+                f"SELECT COALESCE(SUM(discount), 0) AS d, "
+                f"COALESCE(SUM(loyalty_discount), 0) AS l "
+                f"FROM sales WHERE date(created_at) >= ? AND date(created_at) <= ? "
+                f"AND {db.VALID_SALE_FILTER_NO_ALIAS}",
+                (start, end),
+            ).fetchone()
+            result["sale_discounts"] = round(float(disc_row["d"] or 0), 2)
+            result["loyalty_discounts"] = round(float(disc_row["l"] or 0), 2)
+        except Exception:
+            result["sale_discounts"] = 0.0
+            result["loyalty_discounts"] = 0.0
         if group_by == "item":
             # Per-item breakdown (Reviewer 3: use LOWER(item_name) to merge
             # case variants like "Toy Car" and "toy car")
@@ -685,9 +727,9 @@ def sold_stock_report(start: str, end: str, group_by: str = "category") -> dict:
                 "SELECT LOWER(si.item_name) AS item_key, "
                 "MAX(si.item_name) AS item_name, "
                 "si.category_id, pc.code AS cat_code, pc.name AS cat_name, "
-                "COALESCE(SUM(si.sell_price * si.qty), 0) AS revenue, "
+                "COALESCE(SUM(COALESCE(si.line_total, si.sell_price * si.qty)), 0) AS revenue, "
                 "COALESCE(SUM(si.cost_price * si.qty), 0) AS cogs, "
-                "COALESCE(SUM((si.sell_price - si.cost_price) * si.qty), 0) AS gross_profit, "
+                "COALESCE(SUM(COALESCE(si.line_total, si.sell_price * si.qty) - si.cost_price * si.qty), 0) AS gross_profit, "
                 "COALESCE(SUM(si.qty), 0) AS qty_sold, "
                 "COUNT(DISTINCT si.sale_id) AS sale_count, "
                 "MIN(date(s.created_at)) AS first_sold, "
@@ -737,12 +779,16 @@ def sold_stock_report(start: str, end: str, group_by: str = "category") -> dict:
                 "distinct_items": len(items),
             }
         else:
-            # DEFAULT: by category (Reviewer 3)
+            # v8.18.16: revenue = what was actually charged per line
+            # (COALESCE(line_total, sell_price*qty) for legacy rows) so this
+            # report no longer inflates revenue above Profit Analysis /
+            # Store Profit when line-level discounts are used. COGS stays
+            # cost-captured-at-sale-time, which is the historical basis.
             rows = c.execute(
                 "SELECT pc.id AS category_id, pc.code, pc.name, pc.sell_price, "
-                "COALESCE(SUM(si.sell_price * si.qty), 0) AS revenue, "
+                "COALESCE(SUM(COALESCE(si.line_total, si.sell_price * si.qty)), 0) AS revenue, "
                 "COALESCE(SUM(si.cost_price * si.qty), 0) AS cogs, "
-                "COALESCE(SUM((si.sell_price - si.cost_price) * si.qty), 0) AS gross_profit, "
+                "COALESCE(SUM(COALESCE(si.line_total, si.sell_price * si.qty) - si.cost_price * si.qty), 0) AS gross_profit, "
                 "COALESCE(SUM(si.qty), 0) AS qty_sold, "
                 "COUNT(DISTINCT si.sale_id) AS sale_count, "
                 "COUNT(DISTINCT si.item_name) AS distinct_items "

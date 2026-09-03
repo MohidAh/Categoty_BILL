@@ -322,3 +322,22 @@ def _license_open_for_legacy_tests(monkeypatch):
         monkeypatch.setattr(licensing, "is_activated", conftest._REAL_IS_ACTIVATED)
     """
     monkeypatch.setattr(_licensing_module, "is_activated", lambda: True)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# v8.18.16: kill the cross-test 429 flake storm.
+#
+# APIThrottleMiddleware._requests is CLASS-level (module) state that survives
+# across tests. Under the full suite, dozens of API-heavy tests share the
+# TestClient's single IP ("testclient"), so the 200-req/60s window fills and
+# RANDOM tests start failing with 429 (documented in the v8.18.15 worklog as
+# "429 rate-limit flakes hitting random tests per run"). Clearing the window
+# between tests makes every test start with a clean throttle. In-test throttle
+# verification (test_v7_phase1) fills the window itself, so it is unaffected.
+# ═══════════════════════════════════════════════════════════════════════════════
+@pytest.fixture(autouse=True)
+def _clear_api_throttle_window():
+    from app.main import APIThrottleMiddleware
+    APIThrottleMiddleware._requests = {}
+    yield
+    APIThrottleMiddleware._requests = {}

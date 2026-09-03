@@ -48,12 +48,17 @@ def test_profit_analysis_by_category_returns_correct_totals():
         assert len(r["categories"]) > 0
         # Verify totals
         t = r["totals"]
-        # Total revenue should be 10150 + 6500 = 16650
-        assert abs(t["revenue"] - 16650) < 0.01, f"Expected 16650, got {t['revenue']}"
-        # Total COGS should be 3683.75 + 3806.25 = 7490
+        # v8.16.13+: revenue allocates sales.total (what the customer paid),
+        # not raw item sums. Sale 2's total is 5,500 while its items sum to
+        # 6,500 (the sample data intentionally carries this inconsistency to
+        # prove allocation is active): revenue = 10,150 + 5,500 = 15,650.
+        assert abs(t["revenue"] - 15650) < 0.01, f"Expected 15650, got {t['revenue']}"
+        # COGS uses cost at sale time; rebuild_stock_state() rewrites D's
+        # sale cost to its purchase avg (150, from bill 3) — historical
+        # weighted-average basis: 880 + 2600 + 2400 + 1200 = 7,080
         assert abs(t["cogs"] - 7080) < 0.01, f"Expected 7080, got {t['cogs']}"
         # Gross profit
-        assert abs(t["gross_profit"] - 9570) < 0.01, f"Expected 9570, got {t['gross_profit']}"
+        assert abs(t["gross_profit"] - 8570) < 0.01, f"Expected 8570, got {t['gross_profit']}"
     finally:
         cleanup(test_dir)
 
@@ -68,9 +73,12 @@ def test_profit_analysis_excludes_refunded_sales():
             c.execute("UPDATE sales SET payment_status='refunded' WHERE id=1")
         r = profit_analysis_report("2026-08-01", "2026-08-31", group_by="category")
         t = r["totals"]
-        # Only sale 2 remains → revenue = 6500, cogs = 3806.25
-        assert abs(t["revenue"] - 6500) < 0.01, (
-            f"After refunding sale 1, revenue should be 6500, got {t['revenue']}"
+        # Only sale 2 remains. v8.16.13+: its items sum to 6,500 but its
+        # sales.total is 5,500 — proportional allocation scales category
+        # revenue down so the TOTAL equals what the customer actually
+        # paid: 5,500 (not the raw 6,500 of the v8.7-era math).
+        assert abs(t["revenue"] - 5500) < 0.01, (
+            f"After refunding sale 1, revenue should be 5500, got {t['revenue']}"
         )
     finally:
         cleanup(test_dir)
@@ -84,7 +92,15 @@ def test_profit_analysis_by_month():
         assert "months" in r
         assert len(r["months"]) == 1
         assert r["months"][0]["month"] == "2026-08"
-        assert abs(r["months"][0]["revenue"] - 16650) < 0.01
+        # v8.18.16: month view derives revenue from sales.total (10,150 +
+        # 5,500), matching the category view of the same report and P&L —
+        # previously it summed raw item lines (16,650) and disagreed.
+        assert abs(r["months"][0]["revenue"] - 15650) < 0.01
+        # month view and category view of the SAME report must agree
+        rc = profit_analysis_report("2026-08-01", "2026-08-31", group_by="category")
+        assert abs(r["months"][0]["revenue"] - rc["totals"]["revenue"]) < 0.01
+        assert abs(r["months"][0]["cogs"] - rc["totals"]["cogs"]) < 0.01
+        assert abs(r["months"][0]["gross_profit"] - rc["totals"]["gross_profit"]) < 0.01
     finally:
         cleanup(test_dir)
 

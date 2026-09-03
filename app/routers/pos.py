@@ -468,7 +468,28 @@ def create_sale(payload: SaleIn) -> Any:
         raise HTTPException(400, "loyalty_points_used cannot be negative")
 
     # ─── Pre-flight: pure calculation, no DB lock yet ────────────────────────
+    # v8.18.16: fetch the SERVER-side category list prices once (read conn,
+    # pre-lock — same pattern as db.get_setting above). The old gate only
+    # measured the sale-level payload.discount, so line-level discounts
+    # (discount_pct/discount_amount), override_price, and simply sending a
+    # lower per-item sell_price all bypassed it entirely. We now measure the
+    # TOTAL effective discount vs the authoritative price list.
+    _cat_ids = {i.category_id for i in payload.items if i.category_id}
+    _cat_list_prices = {}
+    if _cat_ids:
+        try:
+            with db.conn() as _pc:
+                for _row in _pc.execute(
+                    f"SELECT id, sell_price FROM price_categories "
+                    f"WHERE id IN ({','.join('?' * len(_cat_ids))})",
+                    tuple(_cat_ids),
+                ).fetchall():
+                    if _row["sell_price"] is not None and float(_row["sell_price"]) > 0:
+                        _cat_list_prices[_row["id"]] = money_d(_row["sell_price"])
+        except Exception:
+            _cat_list_prices = {}  # fail-open on read error; gate falls back below
     item_line_totals = []
+    list_gross_d = Decimal("0")  # Σ (server list price × qty) for priced lines
     for i in payload.items:
         eff_price = money_d(i.override_price) if i.override_price and i.override_price > 0 else money_d(i.sell_price)
         line_gross = eff_price * money_d(i.qty)
@@ -480,6 +501,9 @@ def create_sale(payload: SaleIn) -> Any:
         if line_total < 0:
             line_total = Decimal("0")
         item_line_totals.append(line_total)
+        _lp = _cat_list_prices.get(i.category_id)
+        if _lp is not None:
+            list_gross_d += _lp * money_d(i.qty)
     subtotal_d = sum(item_line_totals)
     subtotal = money(subtotal_d)
     if payload.discount_type == "percent":
@@ -492,6 +516,18 @@ def create_sale(payload: SaleIn) -> Any:
     # Discount threshold PIN gate (verify PIN BEFORE taking the write lock —
     # verify_manager_pin opens its own read connection which would deadlock
     # against our pending BEGIN IMMEDIATE).
+    # v8.18.16: gate on the TOTAL effective discount — list-price underpricing
+    # + line discounts + sale-level discount combined. Falls back to the
+    # legacy sale-level-only metric when no line has a server list price
+    # (e.g. all-custom-item carts).
+    paid_pre_tax_d = subtotal_d - money_d(discount_amount)
+    if list_gross_d > 0:
+        discount_pct = float(
+            (list_gross_d - paid_pre_tax_d) / list_gross_d * Decimal("100")
+        )
+    elif subtotal > 0 and payload.discount:
+        # legacy fallback (custom items only)
+        pass
     max_discount_pct = float(db.get_setting("max_discount_pct_without_pin", "10") or "10")
     mgr_override = None  # populated only when discount exceeded threshold and PIN was valid
     if discount_pct > max_discount_pct:
@@ -618,8 +654,14 @@ def create_sale(payload: SaleIn) -> Any:
                 f"(over threshold {max_discount_pct}%) approved by {mgr_override['name']}",
                 {
                     "original_event": "discount_override",
-                    "discount_pct": discount_pct,
+                    "discount_pct": round(discount_pct, 2),
                     "threshold": max_discount_pct,
+                    # v8.18.16: breakdown for the audit trail — which mechanism
+                    # produced the discount (list underpricing, line discounts,
+                    # sale-level discount)
+                    "list_gross": float(list_gross_d),
+                    "charged_pre_tax": float(paid_pre_tax_d),
+                    "sale_level_discount": float(discount_amount),
                     "manager_id": mgr_override["id"],
                     "manager_name": mgr_override["name"],
                     "manager_pin_provided": bool(payload.manager_pin),

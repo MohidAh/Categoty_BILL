@@ -1339,11 +1339,23 @@ route('/reports/sold-stock', async (el) => {
       $('#ss-out').innerHTML = `
         <div class="grid grid-4 mb-4">
           ${statCard('Qty Sold', fmt(t.qty_sold), 'chip-primary', SVG.trendUp)}
-          ${statCard('Revenue', fmtRs(t.revenue), 'chip-info', SVG.trendUp)}
+          ${statCard('Revenue', fmtRs(t.revenue), 'chip-info', SVG.trendUp,
+                     (r.sale_discounts || r.loyalty_discounts) > 0 ?
+                     `Line charges − sale discounts ${fmtRs((r.sale_discounts || 0) + (r.loyalty_discounts || 0))}` : undefined)}
           ${statCard('COGS', fmtRs(t.cogs), 'chip-warning', SVG.wallet)}
           ${statCard('Gross Profit', fmtRs(t.gross_profit), 'chip-success', SVG.trendUp,
                      `Margin ${t.margin_pct}%`)}
         </div>
+        ${(r.sale_discounts || 0) + (r.loyalty_discounts || 0) > 0 ? `
+        <div class="card mb-3" style="padding:12px 16px;background:var(--bg-elevated)">
+          <strong>Reconciliation:</strong> Revenue above is what was charged per line (after item-level
+          discounts). Sale-level discounts of <strong>${fmtRs(r.sale_discounts || 0)}</strong>
+          ${r.loyalty_discounts > 0 ? `and loyalty discounts of <strong>${fmtRs(r.loyalty_discounts || 0)}</strong>` : ''}
+          are applied at the whole-bill level and are not attributable to a single category —
+          so <strong>${fmtRs(t.revenue)} − ${fmtRs((r.sale_discounts || 0) + (r.loyalty_discounts || 0))} = ${fmtRs(Math.max(0, t.revenue - (r.sale_discounts || 0) - (r.loyalty_discounts || 0)))}</strong>
+          is what customers actually paid (matches Profit Analysis / Store Profit revenue, before any tax).
+        </div>
+        ` : ''}
 
         ${groupBy === 'item' ? `
           <div class="card mb-3" style="padding:12px 16px;background:var(--bg-elevated)">

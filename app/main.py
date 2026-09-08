@@ -285,6 +285,9 @@ CASHIER_RESTRICTED_PREFIXES = (
     "/api/digest/config",        # digest config
     "/api/digest/test-send",    # digest manual test send
     "/api/salary",              # v8.18.13: staff salary management — manager-only
+    "/api/calc",                # v8.18.20: live-math traces expose cost/COGS/PnL
+                               # data (incl. get_pnl, otherwise manager-only via
+                               # /api/reports/pnl) — manager-only
 )
 
 

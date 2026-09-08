@@ -300,3 +300,59 @@ def test_live_math_endpoint_used_by_component():
     assert "/api/calc/trace" in src
     # one global listener, guarded against double-wiring
     assert "__liveMathWired" in src
+
+
+# ─── 7. v8.18.20: RBAC — traces expose cost/COGS/PnL data ──────────────────
+
+def test_cashier_cannot_use_calc_trace(cashier_client):
+    """Live-math traces expose avg cost, per-bill purchase prices, COGS and
+    PnL numbers. /api/reports/pnl was already manager-only, but the new
+    /api/calc/trace?metric=pnl_* bypassed that until v8.18.20 added
+    /api/calc to CASHIER_RESTRICTED_PREFIXES."""
+    for metric, extra in (
+        ("overall_margin", ""),
+        ("pnl_net_margin", "&month=2026-08"),
+        ("pnl_gross_margin", "&month=2026-08"),
+        ("avg_cost", "&category_id=1"),
+    ):
+        r = cashier_client.get(f"/api/calc/trace?metric={metric}{extra}")
+        assert r.status_code == 403, f"{metric}: expected 403, got {r.status_code}"
+    r = cashier_client.get("/api/calc/metrics")
+    assert r.status_code == 403
+
+
+def test_manager_can_still_use_calc_trace(authed_client):
+    """The RBAC tightening must not lock managers out of the feature."""
+    r = authed_client.get("/api/calc/trace?metric=pnl_net_margin&month=2026-08")
+    assert r.status_code == 200
+    r = authed_client.get("/api/calc/trace?metric=avg_cost&category_id=1")
+    assert r.status_code == 200
+
+
+# ─── 8. v8.18.20: waterfall labels describe their VALUES ──────────────────
+
+def test_waterfall_labels_describe_values(sample_db):
+    """Steps labelled '− COGS' / '− Operating Expenses' used to show the
+    RUNNING TOTAL in the value column (gross profit, not COGS), which users
+    read as the labelled quantity. Now every label describes the number it
+    shows; the input amount lives in the expression/formula."""
+    tn = calc_explain.get_trace("pnl_net_margin", {"month": "2026-08"})
+    labels = [s["label"] for s in tn["steps"]]
+    assert "After Operating Expenses" in labels
+    assert "After Other Income" in labels
+    from app.shop import get_pnl
+    r = get_pnl("2026-08")
+    s5 = next(s for s in tn["steps"] if s["label"] == "After Operating Expenses")
+    assert s5["value"] == round(float(r["gross_profit"]) - float(r["expenses"]), 4)
+    # the expense amount itself is visible in the expression
+    assert f"{float(r['expenses']):,.2f}" in (s5["expression"] or "")
+
+    ae = calc_explain.get_trace("actual_earnings_margin", {"month": "2026-08"})
+    ae_labels = [s["label"] for s in ae["steps"]]
+    assert any(l.startswith("Gross Profit (Sales") for l in ae_labels)
+    assert "Actual Earnings (after Expenses)" in ae_labels
+
+    mt = calc_explain.get_trace("monthly_margin", {"month": "2026-08"})
+    m_labels = [s["label"] for s in mt["steps"]]
+    assert "Inventory after Purchases" in m_labels
+    assert "COGS (bridge)" in m_labels

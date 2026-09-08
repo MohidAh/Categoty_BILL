@@ -423,10 +423,10 @@ def _trace_monthly(params: dict) -> dict:
     steps = [
         _step(1, "Opening Inventory (value)", "All confirmed purchases − all COGS + adjustments, before the month started",
               None, _n(r["opening_inventory"]), "rs"),
-        _step(2, "+ Purchases this month", "Confirmed bills dated this month (Σ qty × unit price)",
+        _step(2, "Inventory after Purchases", "Purchases = confirmed bills dated this month (Σ qty × unit price)",
               f"{_num(r['opening_inventory'])} + {_num(r['purchases'])}",
               _n(r["opening_inventory"]) + _n(r["purchases"]), "rs"),
-        _step(3, "− Closing Inventory (value)", "Same formula, measured at month end",
+        _step(3, "COGS (bridge)", "Closing inventory = same formula, measured at month end",
               f"{_num(_n(r['opening_inventory']) + _n(r['purchases']))} − {_num(r['closing_inventory'])}",
               cogs, "rs",
               "COGS = Opening + Purchases − Closing (the bridge method)."),
@@ -527,10 +527,11 @@ def _trace_pnl(params: dict, which: str) -> dict:
               f"{_num(revenue)} − {_num(cogs)}", gp, "rs"),
         _step(4, "Gross Margin", "GP ÷ Revenue × 100",
               f"{_num(gp)} ÷ {_num(revenue)} × 100", gross_pct, "percent"),
-        _step(5, "− Operating Expenses", "expenses where expense_type = 'operating'",
+        # v8.18.20: labels describe the running VALUE, not the input
+        _step(5, "After Operating Expenses", "Operating expenses = expenses where expense_type = 'operating'",
               f"{_num(gp)} − {_num(exp)}", gp - exp, "rs",
               "Owner draws are NOT here — they are equity, not an expense."),
-        _step(6, "+ Other Income", "Extra (non-POS) sales — cartons, raddi — no COGS",
+        _step(6, "After Other Income", "Other income = extra (non-POS) sales — cartons, raddi — no COGS",
               f"{_num(gp - exp)} + {_num(other)}", gp - exp + other, "rs"),
     ]
     if which == "gross":
@@ -571,13 +572,16 @@ def _trace_actual_earnings(params: dict) -> dict:
     earnings = _n(r["actual_earnings"])
     net_margin = round(earnings / sales * 100, 2) if sales > 0 else 0.0
 
+    # v8.18.20: waterfall step LABELS describe the VALUE (the running total),
+    # not the input being applied — a step labelled '− COGS' showing the gross
+    # profit number made users think COGS itself was that number.
     steps = [
         _step(1, "Sales (revenue)", "Σ sales.total of the month's valid sales", None, sales, "rs"),
-        _step(2, "− COGS", "Σ (cost_price × qty) of the month's sale items",
+        _step(2, "Gross Profit (Sales − COGS)", "COGS = Σ (cost_price × qty) of the month's sale items",
               f"{_num(sales)} − {_num(cogs)}", gp, "rs"),
-        _step(3, "+ Other Income", "Extra (non-POS) sales — cartons, raddi — no COGS",
+        _step(3, "After Other Income", "Other income = extra (non-POS) sales — cartons, raddi — no COGS",
               f"{_num(gp)} + {_num(other)}", gp + other, "rs"),
-        _step(4, "− Operating Expenses", "rent, salaries, bills… for the month",
+        _step(4, "Actual Earnings (after Expenses)", "Operating expenses: rent, salaries, bills… for the month",
               f"{_num(gp + other)} − {_num(exp)}", earnings, "rs"),
         _step(5, "Actual Earnings Margin", "Actual Earnings ÷ Sales × 100",
               f"{_num(earnings)} ÷ {_num(sales)} × 100", net_margin, "percent", is_result=True),

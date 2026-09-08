@@ -21,7 +21,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 1604,
+    "text_len": 1360,
     "empty_state": null,
     "error_page": false
    }
@@ -1144,7 +1144,7 @@
    ],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 4,
+   "n_calls": 3,
    "pageerrors": [],
    "console_errors": [],
    "dom": {
@@ -1178,7 +1178,7 @@
    ],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 3,
+   "n_calls": 4,
    "pageerrors": [],
    "console_errors": [],
    "dom": {
@@ -1497,7 +1497,7 @@
    "files": [],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 2,
+   "n_calls": 3,
    "pageerrors": [],
    "console_errors": [],
    "dom": {

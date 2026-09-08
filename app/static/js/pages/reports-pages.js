@@ -7,6 +7,7 @@ import { api } from '../api.js';
 import { $, $$, esc, fmt, fmtRs, fmtDate, fmtPct, icon, toast, showLoading, hideLoading,
          openModal, closeModal, skeletonCards, skeletonRows, errorBox, emptyState, chartTheme } from '../utils.js';
 import { initListState } from '../list-state.js';
+import { lm } from '../components/live-math.js';
 
 // Shared SVG icon set
 const SVG = {
@@ -1104,7 +1105,7 @@ route('/reports/profit-analysis', async (el) => {
           ${statCard('Revenue', fmtRs(t.revenue), 'chip-info', SVG.trendUp)}
           ${statCard('COGS', fmtRs(t.cogs), 'chip-warning', SVG.wallet)}
           ${statCard('Gross Profit', fmtRs(t.gross_profit), 'chip-success', SVG.trendUp)}
-          ${statCard('Margin', `${t.margin_pct}%`, 'chip-primary', SVG.trendUp,
+          ${statCard('Margin', `${lm('pa_margin', { start, end }, t.margin_pct + '%')}`, 'chip-primary', SVG.trendUp,
                      groupBy === 'month' ? (extraIncome > 0 ? `+ Extra Sales: ${fmtRs(extraIncome)}` : `Op Expenses: ${fmtRs(t.operating_expenses)}`) : (extraIncome > 0 ? `+ Extra Sales: ${fmtRs(extraIncome)}` : `Qty Sold: ${fmt(t.qty_sold)}`))}
         </div>
 
@@ -1164,7 +1165,7 @@ route('/reports/profit-analysis', async (el) => {
                   <td class="table-num">${fmtRs(m.revenue)}</td>
                   <td class="table-num">${fmtRs(m.cogs)}</td>
                   <td class="table-num ${m.gross_profit >= 0 ? 'text-success' : 'text-danger'}">${fmtRs(m.gross_profit)}</td>
-                  <td class="table-num ${m.margin_pct >= 30 ? 'text-success' : m.margin_pct >= 20 ? 'text-warning' : 'text-danger'}">${m.margin_pct}%</td>
+                  <td class="table-num ${m.margin_pct >= 30 ? 'text-success' : m.margin_pct >= 20 ? 'text-warning' : 'text-danger'}">${lm('pa_margin', { start, end }, m.margin_pct + '%')}</td>
                   <td class="table-num text-success">${(m.extra_sales_income || 0) > 0 ? `+ ${fmtRs(m.extra_sales_income)}` : '—'}</td>
                   <td class="table-num">${fmtRs(m.operating_expenses)}</td>
                   <td class="table-num ${m.operating_profit >= 0 ? 'text-success' : 'text-danger'}">${fmtRs(m.operating_profit)}</td>
@@ -1176,7 +1177,7 @@ route('/reports/profit-analysis', async (el) => {
                 <td class="table-num">${fmtRs(t.revenue)}</td>
                 <td class="table-num">${fmtRs(t.cogs)}</td>
                 <td class="table-num">${fmtRs(t.gross_profit)}</td>
-                <td class="table-num">${t.margin_pct}%</td>
+                <td class="table-num">${lm('pa_margin', { start, end }, t.margin_pct + '%')}</td>
                 <td class="table-num text-success">${extraIncome > 0 ? `+ ${fmtRs(extraIncome)}` : '—'}</td>
                 <td class="table-num">${fmtRs(t.operating_expenses)}</td>
                 <td class="table-num">${fmtRs(t.operating_profit)}</td>
@@ -1235,13 +1236,13 @@ route('/reports/profit-analysis', async (el) => {
                     <td class="table-num">${fmtRs(c.cogs)}</td>
                     <td class="table-num ${c.gross_profit >= 0 ? 'text-success' : 'text-danger'}">${fmtRs(c.gross_profit)}</td>
                     <td class="table-num ${c.margin_pct >= 30 ? 'text-success' : c.margin_pct >= 20 ? 'text-warning' : 'text-danger'}" title="Historical margin (margin you actually realized)">
-                      ${c.margin_pct}%
+                      ${lm('pa_margin', { start, end, category_id: c.category_id }, c.margin_pct + '%')}
                     </td>
                     <td class="table-num ${c.current_margin_pct >= 30 ? 'text-success' : c.current_margin_pct >= 20 ? 'text-warning' : 'text-danger'}" title="Current margin (matches Store Profit dashboard)">
-                      ${c.current_margin_pct}% <span class="text-xs text-dim">${marginDiffStr}</span>
+                      ${lm('category_margin', { category_id: c.category_id }, c.current_margin_pct + '%')} <span class="text-xs text-dim">${marginDiffStr}</span>
                     </td>
                     <td class="table-num text-dim" title="Avg historical cost per unit">${fmtRs(c.avg_historical_cost)}</td>
-                    <td class="table-num" title="Current running avg cost (from Store Profit)">${fmtRs(c.current_avg_cost)}</td>
+                    <td class="table-num" title="Current running avg cost (from Store Profit)">${lm('avg_cost', { category_id: c.category_id }, fmtRs(c.current_avg_cost))}</td>
                     <td class="table-num ${costChangeColor}" title="Cost change since the period">${costChangeStr}</td>
                     <td class="table-num text-success" title="Profit per unit (historical)">${fmtRs(c.profit_per_unit)}</td>
                     <td class="table-num text-success" title="Current profit per unit">${fmtRs(c.current_profit_per_unit)}</td>
@@ -1257,7 +1258,7 @@ route('/reports/profit-analysis', async (el) => {
                 <td class="table-num">${fmtRs(t.revenue)}</td>
                 <td class="table-num">${fmtRs(t.cogs)}</td>
                 <td class="table-num">${fmtRs(t.gross_profit)}</td>
-                <td class="table-num">${t.margin_pct}%</td>
+                <td class="table-num">${lm('pa_margin', { start, end }, t.margin_pct + '%')}</td>
                 <td class="table-num text-dim" colspan="8" title="Per-category metrics are shown above; this row only shows totals.">—</td>
                 <td class="table-num"></td>
               </tr></tfoot>

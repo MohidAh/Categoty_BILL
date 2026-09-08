@@ -1,8 +1,10 @@
 // v5.0 Phase 3 — Margins page (Reports app)
 // Shows both margins: Category Average (informational) and Actual Overall (primary KPI).
+// v8.18.19: every margin value is LIVE MATH — click it to see the full calculation.
 import { route } from '../router.js';
 import { api } from '../api.js';
 import { $, esc, fmtRs, fmtPct, toast, skeletonCards, errorBox } from '../utils.js';
+import { lm } from '../components/live-math.js';
 
 const SVG = {
   chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
@@ -16,7 +18,7 @@ route('/reports/margins', async (el) => {
       <div class="pos-page-header-icon chip-secondary">${SVG.chart}</div>
       <div>
         <h2 class="pos-page-header-title">Margins</h2>
-        <p class="pos-page-header-sub">Category Average Margin (informational) vs Actual Overall Gross Margin (primary KPI).</p>
+        <p class="pos-page-header-sub">Category Average Margin (informational) vs Actual Overall Gross Margin (primary KPI). <strong style="color:var(--accent-text)">Click any value to see its live math.</strong></p>
       </div>
       <div class="pos-page-header-actions"></div>
     </div>
@@ -42,7 +44,7 @@ route('/reports/margins', async (el) => {
             Category Average Margin
           </div>
           <div style="font-size:28px;font-weight:600;color:var(--text-dim);margin-top:8px">
-            ${fmtPct(r.category_average_margin)}
+            ${lm('category_average_margin', {}, fmtPct(r.category_average_margin))}
           </div>
           <div class="text-dim text-sm" style="margin-top:8px">
             <span style="display:inline-flex;width:14px;height:14px;vertical-align:middle">${SVG.info}</span>
@@ -54,7 +56,7 @@ route('/reports/margins', async (el) => {
             Actual Overall Gross Margin
           </div>
           <div style="font-size:32px;font-weight:800;color:var(--success-text, #16a34a);margin-top:8px">
-            ${fmtPct(r.actual_overall_margin)}
+            ${lm('overall_margin', {}, fmtPct(r.actual_overall_margin))}
           </div>
           <div class="text-sm" style="margin-top:8px">
             <strong>Primary KPI</strong> — Total Gross Profit ÷ Total Sales (sales-mix weighted).
@@ -114,9 +116,9 @@ route('/reports/margins', async (el) => {
                 <td><strong>${esc(c.code)}</strong></td>
                 <td>${esc(c.name)}</td>
                 <td style="text-align:right">${fmtRs(c.sell_price)}</td>
-                <td style="text-align:right">${fmtRs(c.avg_cost)}</td>
-                <td style="text-align:right">${fmtRs(marginRs)}</td>
-                <td style="text-align:right;font-weight:700;color:${marginColor}">${fmtPct(c.margin_pct)}</td>
+                <td style="text-align:right">${lm('avg_cost', { category_id: c.id }, fmtRs(c.avg_cost))}</td>
+                <td style="text-align:right">${lm('category_margin', { category_id: c.id }, fmtRs(marginRs))}</td>
+                <td style="text-align:right;font-weight:700;color:${marginColor}">${lm('category_margin', { category_id: c.id }, fmtPct(c.margin_pct))}</td>
               </tr>`;
             }).join('')}
           </tbody>
@@ -127,9 +129,9 @@ route('/reports/margins', async (el) => {
       <div class="card" style="margin-top:16px">
         <h3 style="margin-bottom:8px">Totals (all-time, non-refunded sales)</h3>
         <div style="display:flex;gap:24px;flex-wrap:wrap">
-          <div><span class="text-dim text-sm">Total Sales:</span> <strong>${fmtRs(r.total_sales)}</strong></div>
-          <div><span class="text-dim text-sm">Total COGS:</span> <strong>${fmtRs(r.total_cogs)}</strong></div>
-          <div><span class="text-dim text-sm">Total Gross Profit:</span> <strong style="color:var(--success-text, #16a34a)">${fmtRs(r.total_gross_profit)}</strong></div>
+          <div><span class="text-dim text-sm">Total Sales:</span> <strong>${lm('overall_margin', {}, fmtRs(r.total_sales))}</strong></div>
+          <div><span class="text-dim text-sm">Total COGS:</span> <strong>${lm('overall_margin', {}, fmtRs(r.total_cogs))}</strong></div>
+          <div><span class="text-dim text-sm">Total Gross Profit:</span> <strong style="color:var(--success-text, #16a34a)">${lm('overall_margin', {}, fmtRs(r.total_gross_profit))}</strong></div>
         </div>
       </div>`;
   } catch (e) {

@@ -3,6 +3,7 @@ import { route } from '../router.js';
 import { api } from '../api.js';
 import { $, esc, fmtRs, fmtPct, toast, skeletonCards, errorBox,
          chartTheme, chartOptions } from '../utils.js';
+import { lm } from '../components/live-math.js';
 
 const SVG = {
   chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>',
@@ -44,7 +45,7 @@ route('/reports/ytd', async (el) => {
           YTD Gross Margin (Primary KPI)
         </div>
         <div style="font-size:32px;font-weight:800;color:var(--success-text, #16a34a);margin-top:8px">
-          ${fmtPct(r.ytd_margin)}
+          ${lm('ytd_margin', {}, fmtPct(r.ytd_margin))}
         </div>
         <div class="text-sm" style="margin-top:8px">
           From <strong>${esc(r.opening_date)}</strong> to <strong>${esc(r.today)}</strong> —
@@ -88,7 +89,7 @@ route('/reports/ytd', async (el) => {
         <div style="display:flex;gap:8px;align-items:center">
           <span style="display:inline-flex;width:18px;height:18px;color:var(--text-dim)">${SVG.info}</span>
           <div class="text-sm">
-            <strong>Method check:</strong> YTD margin ${fmtPct(r.ytd_margin)} vs avg-of-monthly-margins ${fmtPct(r.avg_of_monthly_margins)}
+            <strong>Method check:</strong> YTD margin ${lm('ytd_margin', {}, fmtPct(r.ytd_margin))} vs avg-of-monthly-margins ${fmtPct(r.avg_of_monthly_margins)}
             (difference ${r.method_difference > 0 ? '+' : ''}${r.method_difference}%).
             The cumulative method is correct — it weights each month by its sales volume.
           </div>

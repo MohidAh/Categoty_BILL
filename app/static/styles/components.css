@@ -955,3 +955,136 @@ input[type="checkbox"] {
   gap: 8px;
   align-items: center;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   v8.18.19 — LIVE MATH (calculation transparency)
+   Clickable calculated values (margins, avg cost, COGS bridge…) open a
+   modal with the full step-by-step math. Rendered by
+   static/js/components/live-math.js, traces from /api/calc/trace.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* The clickable value: keeps the page's own typography, adds a dotted
+   underline + small calculator glyph that lights up on hover. */
+.live-math {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  font-weight: inherit;
+  cursor: help;
+  border-bottom: 1px dotted var(--accent, #cc785c);
+  display: inline;
+  align-items: baseline;
+  gap: 3px;
+  text-align: inherit;
+  line-height: inherit;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.live-math svg { opacity: 0.45; transition: opacity 0.12s ease; }
+.live-math:hover, .live-math:focus-visible {
+  background: var(--accent-soft, rgba(204, 120, 92, 0.12));
+  border-bottom-style: solid;
+  outline: none;
+}
+.live-math:hover svg, .live-math:focus-visible svg { opacity: 1; }
+
+/* Modal: header with title + big result badge */
+.lm-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--hairline, rgba(0,0,0,0.08));
+}
+.lm-title { font-weight: 700; font-size: 15px; }
+.lm-subtitle { color: var(--text-dim, #62666D); font-size: 12.5px; margin-top: 2px; }
+.lm-result {
+  font-weight: 800;
+  font-size: 26px;
+  line-height: 1.1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.lm-result-pct { color: var(--success-text, #16a34a); }
+.lm-result-rs { color: var(--text, #08090A); }
+
+/* Steps: number | label/formula/expression | value */
+.lm-step {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  gap: 10px;
+  align-items: start;
+  padding: 9px 6px;
+  border-radius: var(--radius-md, 8px);
+}
+.lm-step + .lm-step { border-top: 1px solid var(--hairline, rgba(0,0,0,0.06)); }
+.lm-step-n {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--accent-soft, rgba(204,120,92,0.14));
+  color: var(--accent-text, #a4572f);
+  font-size: 11.5px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  margin-top: 1px;
+}
+.lm-step-label { font-weight: 600; font-size: 13.5px; }
+.lm-step-formula { color: var(--text-dim, #62666D); font-size: 12.5px; margin-top: 2px; }
+.lm-step-expr {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px; font-weight: 600;
+  margin-top: 4px;
+  color: var(--text, #08090A);
+  background: var(--bg-input, rgba(0,0,0,0.03));
+  border: 1px solid var(--hairline, rgba(0,0,0,0.07));
+  border-radius: 6px;
+  padding: 4px 8px;
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+}
+.lm-step-note { color: var(--text-dim, #62666D); font-size: 12px; margin-top: 4px; }
+.lm-step-val {
+  font-weight: 700;
+  font-size: 14.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  margin-top: 2px;
+}
+.lm-step-result {
+  background: var(--success-soft, #f0fdf4);
+  border: 1px solid var(--success, #16a34a);
+  padding: 12px 6px;
+}
+.lm-step-result .lm-step-n { background: var(--success-soft, #dcfce7); color: var(--success-text, #15803d); }
+.lm-step-result .lm-step-val { color: var(--success-text, #16a34a); font-size: 17px; }
+
+/* Event replay table (avg cost) */
+.lm-events td, .lm-events th { padding: 5px 8px; font-size: 12.5px; }
+.lm-evt-purchase td:first-child { border-left: 2px solid var(--success, #16a34a); }
+.lm-evt-sale td:first-child { border-left: 2px solid var(--warning, #d97706); }
+.lm-evt-adjustment td:first-child { border-left: 2px solid var(--info, #3b82f6); }
+
+/* Provenance + notes + footer */
+.lm-section { margin-top: 16px; }
+.lm-section-title {
+  font-size: 11.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text-dim, #62666D);
+  margin-bottom: 8px;
+}
+.lm-prov-row {
+  display: flex; justify-content: space-between; gap: 16px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--hairline, rgba(0,0,0,0.06));
+  font-size: 13px;
+}
+.lm-prov-row span:first-child { color: var(--text-dim, #62666D); }
+.lm-notes { margin: 0; padding-left: 18px; }
+.lm-notes li { color: var(--text-dim, #62666D); font-size: 12.5px; margin-bottom: 6px; }
+.lm-footer {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 16px; padding-top: 12px;
+  border-top: 1px solid var(--hairline, rgba(0,0,0,0.08));
+}

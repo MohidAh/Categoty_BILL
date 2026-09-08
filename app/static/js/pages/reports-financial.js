@@ -3,6 +3,7 @@
 import { route } from '../router.js';
 import { api, apiPost } from '../api.js';
 import { $, esc, fmt, fmtRs, toast, skeletonCards, errorBox } from '../utils.js';
+import { lm } from '../components/live-math.js';
 
 // Shared SVG icon set (local copy — same as reports-pages.js)
 const SVG = {
@@ -74,8 +75,8 @@ route('/reports/pnl', async (el) => {
         <div class="grid grid-4 mb-4">
           ${statCard('Revenue', fmtRs(revenue), 'chip-success', SVG.trendUp)}
           ${statCard('COGS', fmtRs(cogs), 'chip-warning', SVG.wallet)}
-          ${statCard('Gross Profit', fmtRs(grossProfit), 'chip-info', SVG.chart, `${grossMarginPct.toFixed(1)}% margin`)}
-          ${statCard('Net Profit', fmtRs(netProfit), netProfit >= 0 ? 'chip-success' : 'chip-danger', SVG.trendUp, `${netMarginPct.toFixed(1)}% margin`)}
+          ${statCard('Gross Profit', fmtRs(grossProfit), 'chip-info', SVG.chart, `${lm('pnl_gross_margin', { month }, grossMarginPct.toFixed(1) + '% margin')}`)}
+          ${statCard('Net Profit', fmtRs(netProfit), netProfit >= 0 ? 'chip-success' : 'chip-danger', SVG.trendUp, `${lm('pnl_net_margin', { month }, netMarginPct.toFixed(1) + '% margin')}`)}
         </div>
 
         <div class="grid grid-2">
@@ -103,7 +104,7 @@ route('/reports/pnl', async (el) => {
         <div class="card mt-4 text-center">
           <div class="kpi-label">Net Profit (${esc(month)})</div>
           <div style="font-size:36px;font-weight:800;color:${netProfit >= 0 ? 'var(--success-text)' : 'var(--danger-text)'}">${fmtRs(netProfit)}</div>
-          <div class="text-sm text-dim mt-1">${netMarginPct.toFixed(1)}% net margin</div>
+          <div class="text-sm text-dim mt-1">${lm('pnl_net_margin', { month }, netMarginPct.toFixed(1) + '%')} net margin</div>
         </div>`;
     } catch (e) {
       $('#pnl-out').innerHTML = errorBox(e.message);

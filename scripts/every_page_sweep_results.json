@@ -21,7 +21,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 1442,
+    "text_len": 1604,
     "empty_state": null,
     "error_page": false
    }
@@ -587,7 +587,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 360,
+    "text_len": 358,
     "empty_state": null,
     "error_page": false
    }
@@ -757,7 +757,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 330,
+    "text_len": 329,
     "empty_state": null,
     "error_page": false
    }
@@ -825,7 +825,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 1670,
+    "text_len": 1669,
     "empty_state": null,
     "error_page": false
    }
@@ -860,7 +860,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 380,
+    "text_len": 390,
     "empty_state": null,
     "error_page": false
    }
@@ -877,7 +877,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 1222,
+    "text_len": 1212,
     "empty_state": null,
     "error_page": false
    }
@@ -996,7 +996,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 1166,
+    "text_len": 1204,
     "empty_state": null,
     "error_page": false
    }
@@ -1042,7 +1042,7 @@
    ],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 7,
+   "n_calls": 8,
    "pageerrors": [],
    "console_errors": [],
    "dom": {
@@ -1064,7 +1064,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 351,
+    "text_len": 361,
     "empty_state": null,
     "error_page": false
    }
@@ -1081,7 +1081,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 418,
+    "text_len": 408,
     "empty_state": null,
     "error_page": false
    }
@@ -1132,7 +1132,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 1660,
+    "text_len": 1659,
     "empty_state": null,
     "error_page": false
    }
@@ -1178,7 +1178,7 @@
    ],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 4,
+   "n_calls": 3,
    "pageerrors": [],
    "console_errors": [],
    "dom": {
@@ -1200,7 +1200,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 551,
+    "text_len": 548,
     "empty_state": null,
     "error_page": false
    }
@@ -1348,7 +1348,7 @@
    ],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 3,
+   "n_calls": 4,
    "pageerrors": [],
    "console_errors": [],
    "dom": {
@@ -1497,7 +1497,7 @@
    "files": [],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 3,
+   "n_calls": 2,
    "pageerrors": [],
    "console_errors": [],
    "dom": {

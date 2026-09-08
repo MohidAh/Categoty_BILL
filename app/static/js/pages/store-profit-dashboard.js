@@ -1,7 +1,9 @@
 // v5.0 Phase 8 — Store Profit Dashboard (the hero page, Reports default landing)
+// v8.18.19: key numbers are LIVE MATH — click to see the full calculation.
 import { route, navigate } from '../router.js';
 import { api } from '../api.js';
 import { $, esc, fmt, fmtRs, fmtPct, toast, skeletonCards, errorBox } from '../utils.js';
+import { lm } from '../components/live-math.js';
 
 const SVG = {
   trendUp: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>',
@@ -49,7 +51,7 @@ route('/reports/store-profit', async (el) => {
           Actual Overall Gross Margin — Primary KPI
         </div>
         <div style="font-size:48px;font-weight:800;color:var(--success-text, #16a34a);margin:12px 0;line-height:1">
-          ${fmtPct(overallMargin)}
+          ${lm('overall_margin', {}, fmtPct(overallMargin))}
         </div>
         <div class="text-sm" style="margin-top:8px">
           Total Sales ${fmtRs(d.current_margins.total_sales)} · Total Gross Profit ${fmtRs(d.current_margins.total_gross_profit)}
@@ -89,7 +91,7 @@ route('/reports/store-profit', async (el) => {
                 ${d.current_stock.per_category.map(c => `<tr>
                   <td><span class="pos-cat-code" style="background:${esc(c.color || '#888')}">${esc(c.code)}</span></td>
                   <td style="text-align:right">${fmt(c.qty)}</td>
-                  <td style="text-align:right">${fmtRs(c.avg_cost)}</td>
+                  <td style="text-align:right">${c.category_id ? lm('avg_cost', { category_id: c.category_id }, fmtRs(c.avg_cost)) : fmtRs(c.avg_cost)}</td>
                   <td style="text-align:right;font-weight:600">${fmtRs(c.value)}</td>
                 </tr>`).join('')}
               </tbody>
@@ -120,15 +122,15 @@ route('/reports/store-profit', async (el) => {
                   return `<tr>
                     <td><strong>${esc(c.code)}</strong></td>
                     <td>${fmtRs(c.sell_price)}</td>
-                    <td>${fmtRs(c.avg_cost)}</td>
-                    <td style="text-align:right;font-weight:700;color:${color}">${fmtPct(c.margin_pct)}</td>
+                    <td>${lm('avg_cost', { category_id: c.id }, fmtRs(c.avg_cost))}</td>
+                    <td style="text-align:right;font-weight:700;color:${color}">${lm('category_margin', { category_id: c.id }, fmtPct(c.margin_pct))}</td>
                   </tr>`;
                 }).join('')}
               </tbody>
             </table>` : '<p class="text-dim text-sm">No categories yet.</p>'}
           <div style="margin-top:8px;padding:8px;background:var(--bg-2, #f3f4f6);border-radius:6px;font-size:12px">
-            <span class="text-dim">Category Avg (info):</span> <strong>${fmtPct(d.current_margins.category_average_margin)}</strong>
-            · <span class="text-dim">Actual Overall (KPI):</span> <strong style="color:var(--success-text, #16a34a)">${fmtPct(d.current_margins.actual_overall_margin)}</strong>
+            <span class="text-dim">Category Avg (info):</span> <strong>${lm('category_average_margin', {}, fmtPct(d.current_margins.category_average_margin))}</strong>
+            · <span class="text-dim">Actual Overall (KPI):</span> <strong style="color:var(--success-text, #16a34a)">${lm('overall_margin', {}, fmtPct(d.current_margins.actual_overall_margin))}</strong>
           </div>
         </div>
 
@@ -153,7 +155,7 @@ route('/reports/store-profit', async (el) => {
             </div>
             <div>
               <div class="text-dim text-sm">Margin</div>
-              <div style="font-size:16px;font-weight:600">${fmtPct(d.daily.margin)}</div>
+              <div style="font-size:16px;font-weight:600">${lm('daily_margin', {}, fmtPct(d.daily.margin))}</div>
             </div>
           </div>
         </div>
@@ -175,7 +177,7 @@ route('/reports/store-profit', async (el) => {
             </div>
             <div>
               <div class="text-dim text-sm">Monthly Margin</div>
-              <div style="font-size:16px;font-weight:600">${fmtPct(d.monthly.monthly_margin)}</div>
+              <div style="font-size:16px;font-weight:600">${lm('monthly_margin', {}, fmtPct(d.monthly.monthly_margin))}</div>
             </div>
             <div>
               <div class="text-dim text-sm">Operating Profit</div>
@@ -215,7 +217,7 @@ route('/reports/store-profit', async (el) => {
             </div>
             <div>
               <div class="text-dim text-sm">YTD Margin</div>
-              <div style="font-size:16px;font-weight:600">${fmtPct(d.ytd.ytd_margin)}</div>
+              <div style="font-size:16px;font-weight:600">${lm('ytd_margin', {}, fmtPct(d.ytd.ytd_margin))}</div>
             </div>
             <div>
               <div class="text-dim text-sm">YTD COGS</div>

@@ -19,6 +19,34 @@ from ..profit_cash import (
 router = APIRouter()
 
 
+# ─── v8.18.19: LIVE MATH — calculation traces ──────────────────────────────
+# Transparency feature: any reported number (margins, avg cost, COGS bridge)
+# can show its full step-by-step math. Traces are built by app/calc_explain.py
+# FROM THE SAME source functions the reports use, so the math you see is
+# always the math you get.
+
+@router.get("/api/calc/trace")
+def calc_trace(metric: str = "", category_id: int = None, month: str = "",
+               start: str = "", end: str = "", date: str = "") -> Any:
+    """Live-math trace for a metric. See app/calc_explain.py for the list."""
+    from .. import calc_explain
+    params = {"category_id": category_id, "month": month,
+              "start": start, "end": end, "date": date}
+    try:
+        return calc_explain.get_trace(metric, params)
+    except calc_explain.UnknownMetric as e:
+        raise HTTPException(404, str(e))
+    except calc_explain.BadParams as e:
+        raise HTTPException(400, str(e))
+
+
+@router.get("/api/calc/metrics")
+def calc_metrics() -> Any:
+    """The list of metrics that support live-math traces (for the help page)."""
+    from .. import calc_explain
+    return {"metrics": calc_explain.SUPPORTED_METRICS}
+
+
 @router.get("/api/profit/margins")
 def profit_margins() -> Any:
     """Per-category margins + Category Average Margin (informational) +

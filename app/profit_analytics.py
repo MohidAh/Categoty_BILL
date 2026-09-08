@@ -30,7 +30,7 @@ def get_margins() -> dict:
         sell = float(cat["sell_price"] or 0)
         cost = float(cat["avg_cost"] or 0)
         margin_pct = round(((sell - cost) / sell) * 100, 2) if sell > 0 else 0.0
-        categories.append({"code": cat["code"] or "—", "name": cat["name"],
+        categories.append({"id": cat["id"], "code": cat["code"] or "—", "name": cat["name"],
                            "sell_price": round(sell, 2), "avg_cost": round(cost, 2),
                            "margin_pct": margin_pct})
         # v8.5.5: only include categories with cost > 0 in the average.
@@ -169,19 +169,46 @@ def get_ytd_profit() -> dict:
         else:
             earliest = c.execute("SELECT MIN(date(created_at)) AS d FROM sales").fetchone()
             opening_date = earliest["d"] or today
+        # v8.18.19 BUG FIX: these used to be one query over
+        # `sales s LEFT JOIN sale_items si`, where SUM(s.total) is computed
+        # per JOINED ROW — every sale's total was multiplied by its number
+        # of line items (a 4-line sale counted 4x). YTD Sales was inflated
+        # (e.g. 57,100 instead of the true 15,650 on the sample DB) and the
+        # YTD margin was badly wrong. Found while building the live-math
+        # trace for this exact metric. Sales and COGS now come from
+        # separate queries with the correct one-row-per-sale / one-row-per-
+        # line granularity, then months are merged in Python.
         totals = c.execute(
-            "SELECT COALESCE(SUM(s.total), 0) AS ytd_sales, "
-            "COALESCE(SUM(si.cost_price * si.qty), 0) AS ytd_cogs "
-            "FROM sales s LEFT JOIN sale_items si ON si.sale_id = s.id "
-            f"WHERE {db.VALID_SALE_FILTER} AND date(s.created_at) >= ? AND date(s.created_at) <= ?",
+            "SELECT COALESCE(SUM(total), 0) AS ytd_sales "
+            "FROM sales "
+            f"WHERE {db.VALID_SALE_FILTER_NO_ALIAS} "
+            "AND date(created_at) >= ? AND date(created_at) <= ?",
             (opening_date, today)).fetchone()
-        monthly_rows = c.execute(
+        ytd_cogs = c.execute(
+            "SELECT COALESCE(SUM(si.cost_price * si.qty), 0) AS v "
+            "FROM sale_items si JOIN sales s ON si.sale_id = s.id "
+            f"WHERE {db.VALID_SALE_FILTER} "
+            "AND date(s.created_at) >= ? AND date(s.created_at) <= ?",
+            (opening_date, today)).fetchone()["v"]
+        sales_by_month = {r["month"]: float(r["v"] or 0) for r in c.execute(
+            "SELECT strftime('%Y-%m', created_at) AS month, COALESCE(SUM(total), 0) AS v "
+            "FROM sales "
+            f"WHERE {db.VALID_SALE_FILTER_NO_ALIAS} "
+            "AND date(created_at) >= ? AND date(created_at) <= ? "
+            "GROUP BY month ORDER BY month",
+            (opening_date, today)).fetchall()}
+        cogs_by_month = {r["month"]: float(r["v"] or 0) for r in c.execute(
             "SELECT strftime('%Y-%m', s.created_at) AS month, "
-            "COALESCE(SUM(s.total), 0) AS sales, COALESCE(SUM(si.cost_price * si.qty), 0) AS cogs "
-            "FROM sales s LEFT JOIN sale_items si ON si.sale_id = s.id "
-            f"WHERE {db.VALID_SALE_FILTER} AND date(s.created_at) >= ? AND date(s.created_at) <= ? "
-            "GROUP BY strftime('%Y-%m', s.created_at) ORDER BY month",
-            (opening_date, today)).fetchall()
+            "COALESCE(SUM(si.cost_price * si.qty), 0) AS v "
+            "FROM sale_items si JOIN sales s ON si.sale_id = s.id "
+            f"WHERE {db.VALID_SALE_FILTER} "
+            "AND date(s.created_at) >= ? AND date(s.created_at) <= ? "
+            "GROUP BY month ORDER BY month",
+            (opening_date, today)).fetchall()}
+        monthly_rows = [
+            {"month": m, "sales": sales_by_month.get(m, 0.0), "cogs": cogs_by_month.get(m, 0.0)}
+            for m in sorted(set(sales_by_month) | set(cogs_by_month))
+        ]
         op_exp_ytd = c.execute(
             "SELECT COALESCE(SUM(amount), 0) AS v FROM expenses "
             "WHERE expense_type='operating' AND date(date) >= ? AND date(date) <= ?",
@@ -199,7 +226,7 @@ def get_ytd_profit() -> dict:
                 extra_rows[r["month"]] = float(r["v"] or 0)
         except Exception:
             pass  # table not migrated yet
-    ytd_sales = float(totals["ytd_sales"] or 0); ytd_cogs = float(totals["ytd_cogs"] or 0)
+    ytd_sales = float(totals["ytd_sales"] or 0); ytd_cogs = float(ytd_cogs or 0)
     ytd_gp = ytd_sales - ytd_cogs
     ytd_margin = (ytd_gp / ytd_sales * 100) if ytd_sales > 0 else 0.0
     # v8.18.14: YTD operating profit includes extra-sales (other) income

@@ -5,6 +5,7 @@ import { api, apiPost, apiPut, apiDelete } from '../api.js';
 import { $, $$, esc, fmt, fmtRs, fmtDate, icon, toast, showLoading, hideLoading,
          openModal, closeModal, skeletonCards, errorBox, emptyState } from '../utils.js';
 import { initListState } from '../list-state.js';
+import { lm } from '../components/live-math.js';
 
 // Shared SVG icon set for inventory pages
 const SVG = {
@@ -182,8 +183,8 @@ route('/stock', async (el, path, q) => {
               <td class="table-num">${fmt(i.sold)}</td>
               <td class="table-num ${i.adjustments >= 0 ? 'text-success' : 'text-danger'}">${i.adjustments >= 0 ? '+' : ''}${fmt(i.adjustments)}</td>
               <td class="table-num ${stockClass}">${fmt(i.stock)}</td>
-              <td class="table-num">${fmtRs(i.avg_cost)}</td>
-              <td class="table-num font-semibold">${fmtRs(i.stock_value)}</td>
+              <td class="table-num">${lm('avg_cost', { category_id: i.category_id }, fmtRs(i.avg_cost))}</td>
+              <td class="table-num font-semibold">${lm('avg_cost', { category_id: i.category_id }, fmtRs(i.stock_value))}</td>
               <td>${statusBadge}</td>
             </tr>`;
           }).join('')}</tbody>

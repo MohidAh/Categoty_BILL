@@ -3,6 +3,7 @@
 import { route } from '../router.js';
 import { api } from '../api.js';
 import { $, esc, fmtRs, fmtPct, toast, skeletonCards, errorBox } from '../utils.js';
+import { lm } from '../components/live-math.js';
 
 const SVG = {
   chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
@@ -76,7 +77,7 @@ route('/reports/monthly-profit', async (el) => {
           <div class="card" style="padding:16px">
             <div class="text-dim text-sm" style="text-transform:uppercase;font-weight:600">Gross Profit</div>
             <div style="font-size:22px;font-weight:700;margin-top:4px;color:var(--success-text, #16a34a)">${fmtRs(r.gross_profit)}</div>
-            <div class="text-dim text-sm">${fmtPct(r.monthly_margin)} margin</div>
+            <div class="text-dim text-sm">${lm('monthly_margin', { month }, fmtPct(r.monthly_margin))} margin</div>
           </div>
           <div class="card" style="padding:16px">
             <div class="text-dim text-sm" style="text-transform:uppercase;font-weight:600">Operating Profit</div>

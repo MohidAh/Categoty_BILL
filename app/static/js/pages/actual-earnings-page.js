@@ -6,6 +6,7 @@ import { api } from '../api.js';
 import { $, esc, fmtRs, fmtPct, toast, openModal, closeModal,
          skeletonCards, errorBox, chartTheme, chartOptions } from '../utils.js';
 import { openAddExpenseModalGlobal } from './expenses-page.js';
+import { lm } from '../components/live-math.js';
 
 const SVG = {
   wallet: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/></svg>',
@@ -154,7 +155,7 @@ route('/reports/earnings', async (el) => {
       $('#ae-out').innerHTML = `
         <div class="grid grid-2" style="gap:16px;margin-bottom:16px">
           ${heroCard('Total Sales', r.total_sales, `${r.comparison.last_month ? 'vs ' + r.comparison.last_month : 'this month'}`, salesDelta, false)}
-          ${heroCard('Actual Earnings', r.actual_earnings, `${marginPct.toFixed(1)}% net margin`, earningsDelta, true)}
+          ${heroCard('Actual Earnings', r.actual_earnings, `${lm('actual_earnings_margin', { month }, marginPct.toFixed(1) + '% net margin')}`, earningsDelta, true)}
         </div>
 
         <div class="card" style="padding:24px;margin-bottom:16px">

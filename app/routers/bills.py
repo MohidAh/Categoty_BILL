@@ -1826,31 +1826,54 @@ def patch_bill(bill_id: int, payload: PatchBill, request: Request = None) -> Any
 
 # ─── v8.18.21: bill-date change impact (back-date warning) ─────────────────
 
-def _bill_date_crossed_sales(c, bill_id: int, new_date: str, old_date: str | None) -> dict:
+def _bill_date_crossed_sales(c, bill_id: int, new_date: str, old_date: str | None,
+                             cats_override: list | None = None) -> dict:
     """Count the valid sales whose position relative to bill `bill_id` flips
     when its date moves old_date → new_date. Those are the sales whose
     consumed cost mix changes (and whose recorded cost a replay restates).
 
+    Windows are EXACT against the engine's replay tie-break (sort key
+    (ts, seq) with purchases seq=0): a bill dated on day X sorts at X
+    MIDNIGHT, i.e. BEFORE every sale made that day — so a sale ON the old
+    date has consumed the bill and flips when it moves forward past it,
+    while a sale ON the new date still consumes it (v8.18.22 review fix:
+    the forward window was (old, new] and both ends were off by a day,
+    and the first-confirm window missed same-day sales entirely, which
+    could skip a needed realign).
+
     old_date=None means the bill hasn't applied stock yet (review status /
-    first confirm) — the reference point is NOW, so every valid sale of the
-    bill's categories dated after new_date is crossed.
+    first confirm) — the reference point is NOW, so every valid sale of
+    the bill's categories dated on-or-after new_date is crossed.
     """
-    cats = [r["category_id"] for r in c.execute(
-        "SELECT DISTINCT category_id FROM bill_items WHERE bill_id=?", (bill_id,)
-    ).fetchall() if r["category_id"] is not None]
+    # v8.18.22: cats_override — a bill being edited for the FIRST time has
+    # no bill_items rows yet (items ride the confirm payload), so the edit
+    # page passes the categories it is ABOUT to save and the pre-save
+    # warning still fires. Falls back to the stored items otherwise.
+    if cats_override is not None:
+        cats = sorted({int(x) for x in cats_override if x is not None})
+    else:
+        cats = [r["category_id"] for r in c.execute(
+            "SELECT DISTINCT category_id FROM bill_items WHERE bill_id=?", (bill_id,)
+        ).fetchall() if r["category_id"] is not None]
     if not cats:
         return {"affected_sales": 0, "affected_sale_lines": 0, "category_ids": []}
     ph = ",".join("?" * len(cats))
     if old_date is None:
-        where = "date(s.created_at) > ?"
+        # v8.18.22: >= not > — a sale ON new_date (after the bill's midnight)
+        # flips too: before realign it never consumed this stock (applied
+        # at 'now'), after realign it does.
+        where = "date(s.created_at) >= ?"
         params = [new_date]
     elif new_date < (old_date or "")[:10]:
         # moving BACK: sales from the new date up to (not incl.) the old date
         where = "date(s.created_at) >= ? AND date(s.created_at) < ?"
         params = [new_date, old_date[:10]]
     elif new_date > (old_date or "")[:10]:
-        # moving FORWARD: sales after the old date up to (incl.) the new date
-        where = "date(s.created_at) > ? AND date(s.created_at) <= ?"
+        # moving FORWARD: sales from the old date (incl.) up to (not incl.)
+        # the new date — the exact mirror of the back window (see docstring:
+        # a sale ON the old date loses this stock, a sale ON the new date
+        # keeps consuming it).
+        where = "date(s.created_at) >= ? AND date(s.created_at) < ?"
         params = [old_date[:10], new_date]
     else:
         return {"affected_sales": 0, "affected_sale_lines": 0, "category_ids": cats}
@@ -1865,14 +1888,28 @@ def _bill_date_crossed_sales(c, bill_id: int, new_date: str, old_date: str | Non
 
 
 @router.get("/api/bills/{bill_id}/date-impact")
-def bill_date_impact(bill_id: int, new_date: str = "") -> Any:
+def bill_date_impact(bill_id: int, new_date: str = "",
+                     category_ids: str = "") -> Any:
     """v8.18.21: how many existing sales does moving this bill's date to
     `new_date` cross? Called by the edit-bill page BEFORE saving so the user
-    is warned that those sales' recorded costs will be recalculated."""
+    is warned that those sales' recorded costs will be recalculated.
+
+    v8.18.22: optional `category_ids` (comma-separated) — the categories the
+    edit page is ABOUT to save. A bill edited for the first time has no
+    bill_items rows yet (items ride the confirm payload), so without this
+    the pre-save warning would be blind exactly for the back-dated
+    first-confirm case it exists for."""
     try:
         datetime.strptime(new_date, "%Y-%m-%d")
     except (ValueError, TypeError):
         raise HTTPException(400, "new_date must be YYYY-MM-DD")
+    # v8.18.22: parse the client's about-to-be-saved categories (digits
+    # only; anything malformed is ignored, an empty set falls back to the
+    # bill's stored items).
+    cats_override = None
+    if category_ids.strip():
+        parsed = [int(t) for t in category_ids.split(",") if t.strip().isdigit()]
+        cats_override = parsed if parsed else None
     with db.conn() as c:
         b = c.execute(
             "SELECT status, bill_date, deleted_at FROM bills WHERE id=?",
@@ -1884,7 +1921,8 @@ def bill_date_impact(bill_id: int, new_date: str = "") -> Any:
         old_date = (b["bill_date"] or "")[:10] or None
         if b["status"] != "confirmed":
             old_date = None  # stock not applied yet — reference is "now"
-        crossed = _bill_date_crossed_sales(c, bill_id, new_date, old_date)
+        crossed = _bill_date_crossed_sales(c, bill_id, new_date, old_date,
+                                           cats_override=cats_override)
     return {"bill_id": bill_id, "bill_status": b["status"],
             "old_date": old_date, "new_date": new_date,
             **crossed}

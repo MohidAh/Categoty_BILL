@@ -322,23 +322,50 @@ window.__initBillEditExtras = function(id, itemsBody) {
       if (!confirm('Save this bill with no items?')) return;
     }
     // v8.18.21: warn BEFORE saving when the bill's date moves it across
-    // existing sales — their recorded costs will be recalculated (the sales
-    // are then treated as if this stock existed at the new date).
+    // existing sales — their recorded costs will be recalculated.
+    // v8.18.22 review fix: the wording is direction-aware — a FORWARD move
+    // takes stock AWAY from those sales, not gives it to them (the old
+    // text said "is before / will be treated as if they sold this stock"
+    // for both directions, which was wrong when moving a date later).
     const newDate = $('#f_date').value;
     if (newDate) {
       try {
-        const impact = await api(`/api/bills/${id}/date-impact?new_date=${encodeURIComponent(newDate)}`);
+        // v8.18.22: send the categories we are ABOUT to save — a bill edited
+        // for the first time has no items in the DB yet (items ride the
+        // confirm payload), so without them the impact check is blind.
+        const cats = [...new Set(items.map(i => i.category_id).filter(Boolean))];
+        const qs = `new_date=${encodeURIComponent(newDate)}` +
+                   (cats.length ? `&category_ids=${cats.join(',')}` : '');
+        const impact = await api(`/api/bills/${id}/date-impact?${qs}`);
         if (impact.affected_sale_lines > 0) {
-          const moving = (impact.old_date && newDate !== impact.old_date)
-            ? `moving its date from ${impact.old_date} to ${newDate}`
-            : `dating it ${newDate}`;
-          const ok = confirm(
-            `This bill's date (${newDate}) is before ${impact.affected_sale_lines} existing sale line(s) ` +
-            `in ${impact.affected_sales} sale(s).\n\n` +
-            `Because stock is counted in date order, ${moving} means those sales ` +
-            `will be treated as if they sold this stock — their recorded costs ` +
-            `(and the margins they feed) will be recalculated.\n\n` +
-            `Enter dates as they really happened. Continue?`);
+          const hasOld = impact.old_date && newDate !== impact.old_date;
+          const forward = hasOld && newDate > impact.old_date;
+          const lines = impact.affected_sale_lines === 1 ? 'line' : 'lines';
+          const sales = impact.affected_sales === 1 ? 'sale' : 'sales';
+          const counts = `${impact.affected_sale_lines} sale ${lines} in ${impact.affected_sales} ${sales}`;
+          const ok = forward
+            ? confirm(
+                `This bill's date moved AFTER ${counts} that were counted as selling this stock.
+
+` +
+                `Because stock is counted in date order, moving its date from ${impact.old_date} to ${newDate} ` +
+                `means those sales no longer consumed this stock — their recorded costs ` +
+                `(and the margins they feed) will be recalculated.
+
+` +
+                `Enter dates as they really happened. Continue?`)
+            : confirm(
+                `This bill's date (${newDate}) is before ${counts}.
+
+` +
+                `Because stock is counted in date order, ${hasOld
+                    ? `moving its date from ${impact.old_date} to ${newDate}`
+                    : `dating it ${newDate}`} means those sales ` +
+                `will be treated as if they sold this stock — their recorded costs ` +
+                `(and the margins they feed) will be recalculated.
+
+` +
+                `Enter dates as they really happened. Continue?`);
           if (!ok) return;
         }
       } catch (e) {

@@ -1539,6 +1539,12 @@ def init():
             c.execute("ALTER TABLE sale_items ADD COLUMN override_price REAL DEFAULT NULL")
         if "base_price" not in si_cols_v88:
             c.execute("ALTER TABLE sale_items ADD COLUMN base_price REAL DEFAULT NULL")
+        # v8.18.21: restatement tracking — when a stock replay changes a sale
+        # line's recorded cost (back-dated bill, repair, POS import), the
+        # timestamp lands here so Live Math can show "cost was restated".
+        si_cols_v81821 = {r["name"] for r in c.execute("PRAGMA table_info(sale_items)").fetchall()}
+        if "cost_recalc_at" not in si_cols_v81821:
+            c.execute("ALTER TABLE sale_items ADD COLUMN cost_recalc_at TEXT DEFAULT NULL")
 
         # ─── v7.0 Phase 2-5: AI Infrastructure ─────────────────────────────
         c.execute("""CREATE TABLE IF NOT EXISTS ai_cache (

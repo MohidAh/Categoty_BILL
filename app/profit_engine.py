@@ -546,17 +546,24 @@ def sync_bags_stock_to_sold(c=None, category_ids=None) -> list:
 
 # ─── Rebuild (recovery tool — NOT called from normal transactions) ──────────
 
-def rebuild_stock_state() -> dict:
+def rebuild_stock_state(reason: str = None) -> dict:
     """Rebuild category_stock_state from scratch by replaying all confirmed
-    bills and non-refunded sales chronologically. Also rewrites every
-    sale_items.cost_price. Idempotent.
+    bills and non-refunded sales chronologically. Also re-derives every
+    sale_items.cost_price — lines whose cost CHANGES get a restatement
+    timestamp (cost_recalc_at) and are reported + logged. Idempotent.
 
-    This is a RECOVERY tool — it uses its own connections and is NOT part
-    of the normal transaction-aware write path. It should only be called:
+    `reason` (v8.18.21) is recorded in the restatement activity-log entry so
+    the audit trail says WHY costs were restated (e.g. "bill 12 date changed").
+
+    This is a RECOVERY / realignment tool — it uses its own connections and
+    is NOT part of the normal transaction-aware write path. It should only
+    be called:
     - On boot if stock_state_dirty=1
     - From the repair_stock_state.py script
     - After historical POS imports (where chronological order matters)
     - After re-confirming old bills that affect past periods
+    - When a bill's date is changed (v8.18.21) — the timeline moved, so
+      sales may have consumed a different cost mix
     """
     with conn() as c:
         purchases = c.execute(
@@ -589,6 +596,11 @@ def rebuild_stock_state() -> dict:
                 "value": float(r["current_value"] or 0),
                 "avg_cost": float(r["current_avg_cost"] or 0),
             }
+        # v8.18.21: existing recorded costs — compared against the replay's
+        # re-derived costs so restatements (changes) are detected, stamped
+        # (sale_items.cost_recalc_at) and reported instead of being silent.
+        old_costs = {r["id"]: (float(r["cost_price"]) if r["cost_price"] is not None else None)
+                     for r in c.execute("SELECT id, cost_price FROM sale_items").fetchall()}
         # v8.18.17: bag sale events are excluded from the replay entirely —
         # bag categories follow the max(purchased, sold) rule (see the bags
         # block comment above), and skipping the events also preserves the
@@ -650,7 +662,9 @@ def rebuild_stock_state() -> dict:
     # manually re-ran rebuild. Single write_tx (BEGIN IMMEDIATE … COMMIT)
     # means SQLite rolls back the DELETE if any INSERT/UPDATE fails — the
     # table is never observed in a half-rebuilt state by other connections.
-    rewrote_sales = 0
+    rewrote_sales = 0       # all re-derived sale lines (compat: was the unconditional UPDATE count)
+    restated_sale_costs = 0  # v8.18.21: lines whose recorded cost actually CHANGED
+    restatements = []       # v8.18.21: [{sale_item_id, old, new}] — capped sample for logging
     now_ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with db.write_tx() as c:
         c.execute("DELETE FROM category_stock_state")
@@ -658,8 +672,19 @@ def rebuild_stock_state() -> dict:
             _save_state(c, cid, pool["qty"], round(pool["value"], 2), pool["avg"],
                         last_txn_at=now_ts)
         for sale_item_id, new_cost in new_cost_prices.items():
-            c.execute("UPDATE sale_items SET cost_price=? WHERE id=?", (new_cost, sale_item_id))
             rewrote_sales += 1
+            # v8.18.21: stamp (and count) only REAL changes — a no-op rewrite
+            # would clear the meaning of cost_recalc_at and hide real
+            # restatements in noise.
+            old_cost = old_costs.get(sale_item_id)
+            if old_cost is not None and abs(float(new_cost) - old_cost) < 0.005:
+                continue
+            c.execute("UPDATE sale_items SET cost_price=?, cost_recalc_at=? WHERE id=?",
+                     (new_cost, now_ts, sale_item_id))
+            restated_sale_costs += 1
+            if len(restatements) < 50:  # cap the in-memory + log payload
+                restatements.append({"sale_item_id": sale_item_id,
+                                     "old": old_cost, "new": float(new_cost)})
         # v8.18.18: bags rule — the replay leaves bag categories at
         # purchases+adjustments (bag SALE events are skipped); the sync then
         # lands each bag category on its ON-HAND value
@@ -676,10 +701,22 @@ def rebuild_stock_state() -> dict:
                       "avg_cost": round(pool["avg"], 2)},
         })
     log_activity("rebuild_stock_state", "inventory", None,
-                 f"Rebuilt stock state: {len(categories)} categories, rewrote {rewrote_sales} sale_items"
+                 f"Rebuilt stock state: {len(categories)} categories, restated {restated_sale_costs} sale-line costs"
                  + (f", resynced {len(bags_raised)} bag category stock(s) to on-hand" if bags_raised else ""),
-                 {"categories": len(categories), "rewrote_sales": rewrote_sales,
-                  "bags_raised": bags_raised})
+                 {"categories": len(categories), "restated_sale_costs": restated_sale_costs,
+                  "bags_raised": bags_raised, "reason": reason})
+    # v8.18.21: restatements get their own visible audit entry — cost prices
+    # of PAST sales changing is exactly the kind of thing a shop owner must
+    # be able to see happened, and why.
+    if restatements:
+        ex = restatements[0]
+        log_activity("sale_cost_restated", "sale", None,
+                     f"Stock replay restated {restated_sale_costs} sale-line costs "
+                     f"(e.g. sale line #{ex['sale_item_id']}: "
+                       f"Rs {ex['old'] if ex['old'] is not None else '—'} → Rs {ex['new']})"
+                     + (f" — reason: {reason}" if reason else ""),
+                     {"restated": restated_sale_costs, "reason": reason,
+                      "examples": restatements[:20]})
     # PR 8: record last-rebuilt timestamp + clear dirty flag.
     # Both writes are safe to skip if they fail — the rebuild itself already
     # committed via the conn() above; these are just metadata for /api/health.
@@ -701,6 +738,7 @@ def rebuild_stock_state() -> dict:
     except Exception:
         pass  # don't fail the rebuild over a metadata write
     return {"categories": categories, "rewrote_sales": rewrote_sales,
+            "restated_sale_costs": restated_sale_costs,  # v8.18.21
             "bags_raised": bags_raised}
 
 

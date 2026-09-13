@@ -321,9 +321,34 @@ window.__initBillEditExtras = function(id, itemsBody) {
     if (items.length === 0) {
       if (!confirm('Save this bill with no items?')) return;
     }
+    // v8.18.21: warn BEFORE saving when the bill's date moves it across
+    // existing sales — their recorded costs will be recalculated (the sales
+    // are then treated as if this stock existed at the new date).
+    const newDate = $('#f_date').value;
+    if (newDate) {
+      try {
+        const impact = await api(`/api/bills/${id}/date-impact?new_date=${encodeURIComponent(newDate)}`);
+        if (impact.affected_sale_lines > 0) {
+          const moving = (impact.old_date && newDate !== impact.old_date)
+            ? `moving its date from ${impact.old_date} to ${newDate}`
+            : `dating it ${newDate}`;
+          const ok = confirm(
+            `This bill's date (${newDate}) is before ${impact.affected_sale_lines} existing sale line(s) ` +
+            `in ${impact.affected_sales} sale(s).\n\n` +
+            `Because stock is counted in date order, ${moving} means those sales ` +
+            `will be treated as if they sold this stock — their recorded costs ` +
+            `(and the margins they feed) will be recalculated.\n\n` +
+            `Enter dates as they really happened. Continue?`);
+          if (!ok) return;
+        }
+      } catch (e) {
+        // fail open — never block saving because the impact check failed
+        console.warn('date-impact check failed (proceeding):', e.message);
+      }
+    }
     showLoading('Saving...');
     try {
-      await apiPost(`/api/bills/${id}/confirm`, {
+      const res = await apiPost(`/api/bills/${id}/confirm`, {
         supplier_name: $('#f_supplier').value,
         phone: $('#f_phone').value,
         bill_date: $('#f_date').value,
@@ -335,6 +360,11 @@ window.__initBillEditExtras = function(id, itemsBody) {
       });
       hideLoading();
       toast('Bill saved successfully', 'success');
+      // v8.18.21: tell the user what the timeline move did to past sales
+      if (res && res.restated_sale_costs > 0) {
+        toast(`${res.restated_sale_costs} sale line cost${res.restated_sale_costs === 1 ? '' : 's'} ` +
+              `recalculated — see Reports → Margins → Avg Cost for the details`, 'info');
+      }
       // v8.5.4: redirect to bills list (not back to the same bill edit page)
       // so the user sees the confirmed status + can pick another bill.
       navigate('/bills');

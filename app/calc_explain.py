@@ -297,20 +297,23 @@ def _trace_avg_cost(params: dict) -> dict:
             raise BadParams(f"Category {category_id} not found")
         st = _category_state(c, category_id)
 
-        # Purchases: confirmed, non-deleted bills. Engine applies them at
-        # confirm time; we order by the bill's created_at (processing order).
+        # Purchases: confirmed, non-deleted bills. v8.18.21: order by the
+        # SAME event_ts the engine replays by — COALESCE(bill_date,
+        # created_at). (Previously created_at, which diverged from the
+        # engine whenever a bill's date was edited, showing a "replay
+        # doesn't match state" warning that was pure display ordering.)
         purchases = c.execute(
             "SELECT b.bill_no, COALESCE(b.bill_date, date(b.created_at)) AS d, "
-            "b.created_at AS applied_at, "
+            "COALESCE(b.bill_date, b.created_at) AS applied_at, "
             "CASE bi.unit WHEN 'dozen' THEN bi.qty*12 ELSE bi.qty END AS qty, "
             "bi.price, bi.line_total "
             "FROM bill_items bi JOIN bills b ON bi.bill_id=b.id "
             "WHERE bi.category_id=? AND b.status='confirmed' AND b.deleted_at IS NULL "
-            "ORDER BY b.created_at, bi.id",
+            "ORDER BY applied_at, bi.id",
             (category_id,)).fetchall()
         # Sales: valid (refunds were reversed in state too).
         sales = c.execute(
-            "SELECT s.invoice_no, si.qty, si.cost_price, s.created_at "
+            "SELECT s.invoice_no, si.qty, si.cost_price, s.created_at, si.cost_recalc_at "
             "FROM sale_items si JOIN sales s ON si.sale_id=s.id "
             f"WHERE {db_mod.VALID_SALE_FILTER} AND si.category_id=? "
             "ORDER BY s.created_at, si.id",
@@ -322,13 +325,21 @@ def _trace_avg_cost(params: dict) -> dict:
             (category_id,)).fetchall()
 
     events = []
+    restated_seen = False  # v8.18.21: any sale line restated in this trace?
     for r in purchases:
         events.append({"at": r["applied_at"] or "", "sort": r["applied_at"] or "",
                        "type": "purchase", "label": f"Bill {r['bill_no'] or '—'} ({r['d']})",
                        "qty": _n(r["qty"]), "price": _n(r["price"])})
     for r in sales:
+        # v8.18.21: surface restatements — a line whose recorded cost was
+        # recalculated (back-dated bill, repair, import) says so, so the
+        # user never wonders why COGS here differs from an old report.
+        label = f"Sale {r['invoice_no'] or '—'}"
+        if r["cost_recalc_at"]:
+            restated_seen = True
+            label += f" — cost restated {str(r['cost_recalc_at'])[:10]}"
         events.append({"at": r["created_at"] or "", "sort": r["created_at"] or "",
-                       "type": "sale", "label": f"Sale {r['invoice_no'] or '—'}",
+                       "type": "sale", "label": label,
                        "qty": _n(r["qty"]), "price": None})
     for r in adjs:
         events.append({"at": r["created_at"] or "", "sort": r["created_at"] or "",
@@ -392,6 +403,13 @@ def _trace_avg_cost(params: dict) -> dict:
             f"Rs {_num(value)}, but the stored state says qty {_num(st['qty'])} / Rs "
             f"{_num(st['value'])}. This can happen after back-dated bills, imports, or manual "
             "repairs. The stored state is what the app uses; run Stock → Repair if you want them re-synced.")
+    # v8.18.21: explain what the restated marker means when it appears
+    if restated_seen:
+        notes.append(
+            "'Cost restated' lines had their recorded cost recalculated by a stock replay "
+            "(for example after a bill's date changed or a stock repair) — the timeline "
+            "moved, so the sale is treated as if the stock existed at its bill's date. "
+            "The current cost is the one all reports use.")
     prov = [
         {"label": "Confirmed purchase bill lines", "value": str(len(purchases))},
         {"label": "Valid sale lines", "value": str(len(sales))},

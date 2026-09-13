@@ -76,7 +76,7 @@ route('/bills/', async (el, path) => {
               ${activeCats.length ? '' : ''}
             </datalist>
             <div><label>Phone</label><input class="input" id="f_phone" value="${esc(b.phone || '')}" placeholder="03001234567"></div>
-            <div><label>Bill Date</label><input class="input" id="f_date" type="date" value="${esc(b.bill_date ? b.bill_date.slice(0, 10) : '')}"></div>
+            <div><label>Bill Date</label><input class="input" id="f_date" type="date" value="${esc(b.bill_date ? b.bill_date.slice(0, 10) : '')}" data-orig="${esc(b.bill_date ? b.bill_date.slice(0, 10) : '')}"></div>
             <div><label>Bill No</label><input class="input" id="f_billno" value="${esc(b.bill_no || '')}"></div>
             <div><label>Written Total (Rs)</label><input class="input" id="f_total" type="number" step="0.01" value="${b.written_total ?? ''}"></div>
             <div><label>Payment Status</label>

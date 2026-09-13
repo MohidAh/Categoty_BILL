@@ -21,7 +21,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 1360,
+    "text_len": 1699,
     "empty_state": null,
     "error_page": false
    }
@@ -94,7 +94,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 967,
+    "text_len": 939,
     "empty_state": null,
     "error_page": false
    }
@@ -621,7 +621,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 579,
+    "text_len": 580,
     "empty_state": null,
     "error_page": false
    }
@@ -672,7 +672,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 187,
+    "text_len": 188,
     "empty_state": "No quotations yet\n\nSave a cart as a quote from the POS screen (F12).\n\nGo to POS",
     "error_page": false
    }
@@ -723,7 +723,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 144,
+    "text_len": 145,
     "empty_state": "No sales found\n\nTry a different date or page.",
     "error_page": false
    }
@@ -757,7 +757,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 329,
+    "text_len": 330,
     "empty_state": null,
     "error_page": false
    }
@@ -825,7 +825,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 1669,
+    "text_len": 1648,
     "empty_state": null,
     "error_page": false
    }
@@ -860,7 +860,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 390,
+    "text_len": 380,
     "empty_state": null,
     "error_page": false
    }
@@ -872,12 +872,12 @@
    ],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 5,
+   "n_calls": 4,
    "pageerrors": [],
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 1212,
+    "text_len": 1222,
     "empty_state": null,
     "error_page": false
    }
@@ -894,7 +894,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 967,
+    "text_len": 939,
     "empty_state": null,
     "error_page": false
    }
@@ -1047,7 +1047,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 575,
+    "text_len": 379,
     "empty_state": null,
     "error_page": false
    }
@@ -1064,8 +1064,8 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 361,
-    "empty_state": null,
+    "text_len": 134,
+    "empty_state": "No sales in this period\n\nTry a wider date range.",
     "error_page": false
    }
   },
@@ -1081,7 +1081,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 408,
+    "text_len": 418,
     "empty_state": null,
     "error_page": false
    }
@@ -1098,8 +1098,8 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 1605,
-    "empty_state": null,
+    "text_len": 171,
+    "empty_state": "No sales in this period\n\nTry a wider date range.",
     "error_page": false
    }
   },
@@ -1115,8 +1115,8 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 667,
-    "empty_state": null,
+    "text_len": 182,
+    "empty_state": "No sales in this period\n\nTry a wider date range.",
     "error_page": false
    }
   },
@@ -1132,7 +1132,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 1659,
+    "text_len": 1638,
     "empty_state": null,
     "error_page": false
    }
@@ -1144,7 +1144,7 @@
    ],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 3,
+   "n_calls": 4,
    "pageerrors": [],
    "console_errors": [],
    "dom": {
@@ -1183,8 +1183,8 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 362,
-    "empty_state": null,
+    "text_len": 118,
+    "empty_state": "No sales in this period\n\nTry a wider date range.",
     "error_page": false
    }
   },
@@ -1348,7 +1348,7 @@
    ],
    "failures": [],
    "dead_reads": [],
-   "n_calls": 4,
+   "n_calls": 5,
    "pageerrors": [],
    "console_errors": [],
    "dom": {
@@ -1502,7 +1502,7 @@
    "console_errors": [],
    "dom": {
     "dom": "OK",
-    "text_len": 383,
+    "text_len": 384,
     "empty_state": null,
     "error_page": false
    }

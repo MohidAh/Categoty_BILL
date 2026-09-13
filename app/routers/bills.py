@@ -1256,8 +1256,13 @@ def confirm(bill_id: int, payload: ConfirmIn) -> Any:
         )
 
     # ─── Post-commit (outside txn) ──────────────────────────────────────────
-    intel = _confirm_post_commit_intelligence(bill_id, was_confirmed)
-    return {"ok": True, "bill_intelligence": intel, "new_version": expected_version + 1}
+    old_bill_date = (bill_row["bill_date"] or "")[:10] or None
+    new_bill_date = (payload.bill_date or "")[:10] or None
+    intel, restated = _confirm_post_commit_intelligence(
+        bill_id, was_confirmed, old_bill_date, new_bill_date)
+    return {"ok": True, "bill_intelligence": intel,
+            "new_version": expected_version + 1,
+            "restated_sale_costs": restated}  # v8.18.21
 
 
 # ─── v8.14.0: confirm() helpers — each handles one step, accepts shared connection c ──
@@ -1270,7 +1275,7 @@ def _confirm_check_and_increment(c, bill_id: int) -> tuple:
     inflating category_stock_state.
     """
     bill_row = c.execute(
-        "SELECT status, version, deleted_at FROM bills WHERE id=?", (bill_id,)
+        "SELECT status, version, deleted_at, bill_date FROM bills WHERE id=?", (bill_id,)
     ).fetchone()
     if not bill_row:
         raise HTTPException(404, "bill not found")
@@ -1455,20 +1460,53 @@ def _confirm_apply_new_purchases(c, bill_id: int, items: list, default_cat_id: i
                 )
 
 
-def _confirm_post_commit_intelligence(bill_id: int, was_confirmed: bool) -> list:
-    """Post-commit: compute bill intelligence + rebuild stock state (if re-confirming)."""
+def _confirm_post_commit_intelligence(bill_id: int, was_confirmed: bool,
+                                      old_bill_date: str = None,
+                                      new_bill_date: str = None) -> tuple:
+    """Post-commit: compute bill intelligence + rebuild stock state when the
+    timeline moved. Returns (intel, restated_sale_costs).
+
+    v8.18.21 — the rebuild now also runs on the FIRST confirm of a back-dated
+    bill: if the bill's date is before existing sales of its categories,
+    those sales chronologically consumed this stock, so their recorded costs
+    must be restated (previously the incremental apply landed the purchase
+    at 'now' and the divergence survived until an unrelated rebuild).
+    A bill dated TODAY (or later) never crosses anything — sales on the
+    confirm day sort after the bill's midnight timestamp, matching the
+    incremental semantics — so no rebuild, no noise."""
     try:
         from ..bill_intel import compute_bill_intelligence
         intel = compute_bill_intelligence(bill_id)
     except Exception as e:
         logger.error(f"Bill intelligence failed for bill {bill_id}: {e}")
         intel = []
+    restated = 0
+    reason = None
     if was_confirmed:
+        # Re-confirm: items were reversed + re-applied — full rebuild (as
+        # before v8.18.21), now with a reason string for the audit trail.
+        reason = f"bill {bill_id} re-confirmed"
+        if new_bill_date and new_bill_date != (old_bill_date or ""):
+            reason += f" (date {old_bill_date or '—'} → {new_bill_date})"
+    else:
+        # First confirm: rebuild only if genuinely back-dated across sales.
         try:
-            profit_mod.rebuild_stock_state()
+            today = datetime.now().strftime("%Y-%m-%d")
+            if new_bill_date and new_bill_date < today:
+                with db.conn() as c:
+                    crossed = _bill_date_crossed_sales(c, bill_id, new_bill_date, None)
+                if crossed["affected_sale_lines"] > 0:
+                    reason = (f"back-dated bill {bill_id} confirmed ({new_bill_date}) "
+                              f"— crossed {crossed['affected_sales']} sale(s)")
         except Exception as e:
-            logger.warning(f"rebuild_stock_state after re-confirm failed: {e}")
-    return intel
+            logger.warning(f"back-date check for bill {bill_id} failed: {e}")
+    if reason:
+        try:
+            result = profit_mod.rebuild_stock_state(reason=reason)
+            restated = int(result.get("restated_sale_costs", 0))
+        except Exception as e:
+            logger.warning(f"rebuild_stock_state after confirm failed: {e}")
+    return intel, restated
 
 
 
@@ -1709,8 +1747,15 @@ def restore_bill(bill_id: int) -> Any:
 
 
 @router.patch("/api/bills/{bill_id}")
-def patch_bill(bill_id: int, payload: PatchBill) -> Any:
+def patch_bill(bill_id: int, payload: PatchBill, request: Request = None) -> Any:
     """Inline update of bill fields without rewriting items."""
+    # v8.18.21: changing a bill's DATE now realigns stock state and can
+    # restate past sale costs — that's accounting territory. Cashiers keep
+    # access to the operational fields (payment status etc.) they had before.
+    if payload.bill_date is not None and request is not None:
+        if _get_session_role(request) == "cashier":
+            raise HTTPException(403, "Insufficient permissions (manager role required) "
+                                     "to change a bill's date")
     fields = []
     args = []
     for f in ("supplier_name", "phone", "bill_date", "bill_no",
@@ -1722,12 +1767,127 @@ def patch_bill(bill_id: int, payload: PatchBill) -> Any:
     if not fields:
         return {"ok": False, "updated": 0}
     args.append(bill_id)
+
+    # ─── v8.18.21: a bill_date change moves this bill across the timeline ───
+    # Sales that fall between the old and new date have consumed a different
+    # cost mix (the bill now sits before/after them in the chronological
+    # replay). Previously a date change here was written SILENTLY — the stock
+    # state stayed stale until some unrelated rebuild ran, and past sale
+    # costs were never restated. Now: validate, log, and re-align the state.
+    date_changed_to = None
+    old_date = old_status = None
+    if payload.bill_date is not None:
+        try:
+            datetime.strptime(payload.bill_date, "%Y-%m-%d")
+        except (ValueError, TypeError):
+            raise HTTPException(400, "bill_date must be YYYY-MM-DD")
+        with db.conn() as c:
+            row = c.execute(
+                "SELECT status, bill_date FROM bills WHERE id=?", (bill_id,)).fetchone()
+        if row is None:
+            raise HTTPException(404, "bill not found")
+        old_status, old_date = row["status"], row["bill_date"]
+        if payload.bill_date != (old_date or "")[:10]:
+            date_changed_to = payload.bill_date
+
     with db.conn() as c:
         cur = c.execute(
             f"UPDATE bills SET {', '.join(fields)} WHERE id=?", args
         )
         updated = cur.rowcount
-    return {"ok": True, "updated": updated}
+
+    restated = 0
+    if date_changed_to is not None:
+        with db.conn() as c:
+            db.log_activity(
+                "bill_edited", "bill", bill_id,
+                f"Bill #{bill_id} date changed: {old_date or '—'} → {date_changed_to}",
+                {"field": "bill_date", "before": old_date, "after": date_changed_to},
+                c=c,
+            )
+            crossed = _bill_date_crossed_sales(c, bill_id, date_changed_to, old_date)
+        # Re-align stock only for confirmed bills (review bills haven't
+        # applied stock yet — their date is applied at confirm time).
+        if old_status == "confirmed":
+            try:
+                result = profit_mod.rebuild_stock_state(
+                    reason=f"bill {bill_id} date changed "
+                           f"({old_date or '—'} → {date_changed_to})")
+                restated = int(result.get("restated_sale_costs", 0))
+            except Exception as e:
+                logger.warning(f"rebuild after bill-date patch failed ({bill_id}): {e}")
+
+    out = {"ok": True, "updated": updated, "stock_rebuilt": date_changed_to is not None
+           and old_status == "confirmed", "restated_sale_costs": restated}
+    if date_changed_to is not None:
+        out["crossed_sale_lines"] = crossed.get("affected_sale_lines", 0)
+    return out
+
+
+# ─── v8.18.21: bill-date change impact (back-date warning) ─────────────────
+
+def _bill_date_crossed_sales(c, bill_id: int, new_date: str, old_date: str | None) -> dict:
+    """Count the valid sales whose position relative to bill `bill_id` flips
+    when its date moves old_date → new_date. Those are the sales whose
+    consumed cost mix changes (and whose recorded cost a replay restates).
+
+    old_date=None means the bill hasn't applied stock yet (review status /
+    first confirm) — the reference point is NOW, so every valid sale of the
+    bill's categories dated after new_date is crossed.
+    """
+    cats = [r["category_id"] for r in c.execute(
+        "SELECT DISTINCT category_id FROM bill_items WHERE bill_id=?", (bill_id,)
+    ).fetchall() if r["category_id"] is not None]
+    if not cats:
+        return {"affected_sales": 0, "affected_sale_lines": 0, "category_ids": []}
+    ph = ",".join("?" * len(cats))
+    if old_date is None:
+        where = "date(s.created_at) > ?"
+        params = [new_date]
+    elif new_date < (old_date or "")[:10]:
+        # moving BACK: sales from the new date up to (not incl.) the old date
+        where = "date(s.created_at) >= ? AND date(s.created_at) < ?"
+        params = [new_date, old_date[:10]]
+    elif new_date > (old_date or "")[:10]:
+        # moving FORWARD: sales after the old date up to (incl.) the new date
+        where = "date(s.created_at) > ? AND date(s.created_at) <= ?"
+        params = [old_date[:10], new_date]
+    else:
+        return {"affected_sales": 0, "affected_sale_lines": 0, "category_ids": cats}
+    row = c.execute(
+        f"SELECT COUNT(DISTINCT s.id) AS n_sales, COUNT(si.id) AS n_lines "
+        f"FROM sales s JOIN sale_items si ON si.sale_id=s.id "
+        f"WHERE {db.VALID_SALE_FILTER} AND si.category_id IN ({ph}) AND {where}",
+        (*cats, *params)).fetchone()
+    return {"affected_sales": int(row["n_sales"] or 0),
+            "affected_sale_lines": int(row["n_lines"] or 0),
+            "category_ids": cats}
+
+
+@router.get("/api/bills/{bill_id}/date-impact")
+def bill_date_impact(bill_id: int, new_date: str = "") -> Any:
+    """v8.18.21: how many existing sales does moving this bill's date to
+    `new_date` cross? Called by the edit-bill page BEFORE saving so the user
+    is warned that those sales' recorded costs will be recalculated."""
+    try:
+        datetime.strptime(new_date, "%Y-%m-%d")
+    except (ValueError, TypeError):
+        raise HTTPException(400, "new_date must be YYYY-MM-DD")
+    with db.conn() as c:
+        b = c.execute(
+            "SELECT status, bill_date, deleted_at FROM bills WHERE id=?",
+            (bill_id,)).fetchone()
+        if b is None:
+            raise HTTPException(404, "bill not found")
+        if b["deleted_at"] is not None:
+            raise HTTPException(409, "bill is deleted — restore it first")
+        old_date = (b["bill_date"] or "")[:10] or None
+        if b["status"] != "confirmed":
+            old_date = None  # stock not applied yet — reference is "now"
+        crossed = _bill_date_crossed_sales(c, bill_id, new_date, old_date)
+    return {"bill_id": bill_id, "bill_status": b["status"],
+            "old_date": old_date, "new_date": new_date,
+            **crossed}
 
 
 

@@ -1546,6 +1546,46 @@ def init():
         if "cost_recalc_at" not in si_cols_v81821:
             c.execute("ALTER TABLE sale_items ADD COLUMN cost_recalc_at TEXT DEFAULT NULL")
 
+        # ─── v8.18.23: repair POS-import return-line sell_price corruption ──
+        # The pre-v8.18.23 importer derived unit price as
+        #   sell_price = line_total / qty if qty > 0 else line_total
+        # so every RETURN line (qty < 0) got the whole LINE TOTAL stored as
+        # its unit price (e.g. qty=-7, amount=-1750 -> sell_price=-1750
+        # instead of +250). Downstream, every SUM(sell_price * qty) metric
+        # double-negated the return into a POSITIVE sale — the reporting
+        # client's Margins "Total Sales" was inflated by Rs 15,540 and
+        # disagreed with Profit Analysis / P&L by exactly that amount.
+        # Repair signature (importer-only — native sale lines can never
+        # match it, because line_total = sell_price * qty there):
+        #   qty < 0 AND sell_price == line_total AND sell_price != line_total/qty
+        try:
+            _bad = c.execute(
+                "SELECT COUNT(*) AS n FROM sale_items "
+                "WHERE qty < 0 AND line_total IS NOT NULL "
+                "AND ABS(sell_price - line_total) < 0.005 "
+                "AND ABS(sell_price - line_total / CAST(qty AS REAL)) > 0.005"
+            ).fetchone()["n"]
+            if _bad:
+                c.execute(
+                    "UPDATE sale_items "
+                    "SET sell_price = ROUND(line_total / CAST(qty AS REAL), 2) "
+                    "WHERE qty < 0 AND line_total IS NOT NULL "
+                    "AND ABS(sell_price - line_total) < 0.005 "
+                    "AND ABS(sell_price - line_total / CAST(qty AS REAL)) > 0.005"
+                )
+                try:
+                    log_activity(
+                        "sale_price_repaired", "sale", None,
+                        f"Repaired {_bad} imported return line(s): sell_price held the "
+                        f"line total instead of the unit price (pre-v8.18.23 importer "
+                        f"bug) — margins now use the correct per-unit price.",
+                        {"repaired_lines": int(_bad)}, c=c,
+                    )
+                except Exception:
+                    pass  # never fail boot over the audit write
+        except Exception:
+            pass  # never fail boot over the repair (e.g. old schema without columns)
+
         # ─── v7.0 Phase 2-5: AI Infrastructure ─────────────────────────────
         c.execute("""CREATE TABLE IF NOT EXISTS ai_cache (
             key TEXT PRIMARY KEY,

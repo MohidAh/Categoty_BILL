@@ -931,7 +931,9 @@ def get_daily_summary(date: str = None) -> dict:
         ).fetchone()["n"]
         # Top categories by revenue today
         top_cats = c.execute(
-            "SELECT si.category_code, SUM(si.sell_price * si.qty) AS revenue, SUM(si.qty) AS qty "
+            # v8.18.23: COALESCE(line_total, ...) — imported return lines
+            # double-negate under sell_price*qty (see get_margins note)
+            "SELECT si.category_code, SUM(COALESCE(si.line_total, si.sell_price * si.qty)) AS revenue, SUM(si.qty) AS qty "
             "FROM sale_items si JOIN sales s ON si.sale_id=s.id "
             "WHERE date(s.created_at)=? AND s.payment_status IN ('paid', 'credit', 'partial') "
             "GROUP BY si.category_code ORDER BY revenue DESC LIMIT 3",

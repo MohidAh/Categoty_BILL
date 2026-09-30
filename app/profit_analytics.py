@@ -19,7 +19,12 @@ def get_margins() -> dict:
             "WHERE pc.active = 1 ORDER BY pc.sort_order, pc.code"
         ).fetchall()
         totals = c.execute(
-            "SELECT COALESCE(SUM(si.sell_price * si.qty), 0) AS total_sales, "
+            # v8.18.23: line_total is what the line actually charged (POS
+            # imports store it authoritatively; native lines compute it the
+            # same way) — sell_price*qty alone double-negates imported RETURN
+            # lines (negative sell_price AND negative qty -> positive),
+            # inflating Total Sales. COALESCE falls back for legacy NULL rows.
+            "SELECT COALESCE(SUM(COALESCE(si.line_total, si.sell_price * si.qty)), 0) AS total_sales, "
             "COALESCE(SUM(si.cost_price * si.qty), 0) AS total_cogs "
             "FROM sale_items si JOIN sales s ON si.sale_id = s.id "
             f"WHERE {db.VALID_SALE_FILTER}"
@@ -398,7 +403,8 @@ def get_daily_stock_report(date: str = "") -> dict:
             "GROUP BY bi.category_id", (date,)).fetchall()
         today_purchases_map = {r["category_id"]: {"qty": float(r["qty"] or 0), "value": float(r["value"] or 0)} for r in today_purchases}
         today_sales = c.execute(
-            "SELECT si.category_id, SUM(si.qty) AS qty, SUM(si.sell_price * si.qty) AS sales_value, SUM(si.cost_price * si.qty) AS cogs "
+            # v8.18.23: COALESCE(line_total, ...) — see get_margins note
+            "SELECT si.category_id, SUM(si.qty) AS qty, SUM(COALESCE(si.line_total, si.sell_price * si.qty)) AS sales_value, SUM(si.cost_price * si.qty) AS cogs "
             "FROM sale_items si JOIN sales s ON si.sale_id=s.id "
             "WHERE s.payment_status IN ('paid', 'credit', 'partial') AND date(s.created_at)=? AND si.category_id IS NOT NULL GROUP BY si.category_id", (date,)).fetchall()
         today_sales_map = {r["category_id"]: {"qty": float(r["qty"] or 0), "sales_value": float(r["sales_value"] or 0), "cogs": float(r["cogs"] or 0)} for r in today_sales}

@@ -118,8 +118,9 @@ def _trace_overall_margin(params: dict) -> dict:
     """Actual Overall Gross Margin = Total GP ÷ Total Sales (all-time).
 
     Basis (same as profit_analytics.get_margins): line-level
-    Σ(sell_price × qty) over valid sales — NOT sales.total. Cost uses
-    sale_items.cost_price captured at sale time.
+    Σ(line_total) over valid sales (v8.18.23 — the actually-charged line
+    amount; sell_price×qty double-negates imported return lines). Cost
+    uses sale_items.cost_price captured at sale time.
     """
     from .profit_analytics import get_margins
     m = get_margins()
@@ -129,8 +130,9 @@ def _trace_overall_margin(params: dict) -> dict:
     margin = _n(m["actual_overall_margin"])
 
     steps = [
-        _step(1, "Total Sales", "Σ (line sell_price × qty) over all valid sales",
+        _step(1, "Total Sales", "Σ (line_total) over all valid sales",
               None, total_sales, "rs",
+              "What each line actually charged (returns count negative). "
               "Line-level basis — before sale-level discounts. See P&L for the post-discount revenue view."),
         _step(2, "Total COGS", "Σ (cost_price × qty) — cost captured at the moment of each sale",
               None, total_cogs, "rs",
@@ -687,8 +689,8 @@ def _trace_daily(params: dict) -> dict:
     margin = round(gp / sales * 100, 2) if sales > 0 else 0.0
 
     steps = [
-        _step(1, "Today's Sales", "Σ (line sell_price × qty) of today's valid sales",
-              None, sales, "rs", "Line-level basis for the daily card."),
+        _step(1, "Today's Sales", "Σ (line_total) of today's valid sales",
+              None, sales, "rs", "What each line actually charged (returns count negative)."),
         _step(2, "Today's COGS", "Σ (cost_price × qty) of today's sale items",
               None, cogs, "rs"),
         _step(3, "Today's Gross Profit", "Sales − COGS",

@@ -437,7 +437,13 @@ def import_pos_backup(zip_path: str) -> dict:
         line_items_by_unqcode = {}
         if os.path.exists(invtrans_path):
             for rec in DBF(invtrans_path):
-                if rec.get("TYPE") != "SI":
+                # v8.18.23: 'Si' (mixed case) = return / credit-note document
+                # — the POS ledger posts it NEGATIVE (ACCTRANS 'Si' entries
+                # carry negative amounts). Lines are stored with positive
+                # magnitudes; the doc type carries the sign. Both types feed
+                # the map; the INVOICE header decides importability.
+                _t = str(rec.get("TYPE", "") or "")
+                if _t not in ("SI", "Si"):
                     continue
                 uc = rec.get("UNQCODE", "")
                 if not uc:
@@ -450,6 +456,7 @@ def import_pos_backup(zip_path: str) -> dict:
                     "amount": float(rec.get("AMOUNT", 0) or 0),
                     "cost": float(rec.get("COST", 0) or 0),  # per-unit cost at sale time
                     "part_no": str(rec.get("PART_NO", "") or ""),
+                    "is_return_doc": _t == "Si",  # v8.18.23
                 })
 
         # ── v8.5.1: Load INVOICE.DBF as the sale-header source of truth ──
@@ -473,10 +480,19 @@ def import_pos_backup(zip_path: str) -> dict:
         invoice_by_unqcode = {}
         if os.path.exists(invoice_path):
             for rec in DBF(invoice_path):
-                if rec.get("TYPE") != "SI":
+                _t = str(rec.get("TYPE", "") or "")
+                if _t not in ("SI", "Si"):
                     continue
                 uc = rec.get("UNQCODE", "")
                 if not uc:
+                    continue
+                # v8.18.23: 'Si' = return / credit-note document. Only
+                # POSTED returns are imported — unposted ones are drafts
+                # that may still change, so they are skipped WITHOUT being
+                # recorded in dedup (a later backup where they're posted
+                # will import them then).
+                is_return_doc = _t == "Si"
+                if is_return_doc and str(rec.get("STATUS", "") or "") != "P":
                     continue
                 invoice_by_unqcode[uc] = {
                     "status": str(rec.get("STATUS", "") or ""),
@@ -489,6 +505,7 @@ def import_pos_backup(zip_path: str) -> dict:
                     "salesman": int(rec.get("SALESMAN", 0) or 0),
                     "tax": float(rec.get("TAX", 0) or 0),
                     "rounding": float(rec.get("ROUNDING", 0) or 0),
+                    "is_return_doc": is_return_doc,  # v8.18.23
                 }
 
         # ── Parse ACCTRANS.DBF (payment-method info only — NOT totals) ──
@@ -567,6 +584,7 @@ def import_pos_backup(zip_path: str) -> dict:
                 }
 
         sales_imported = 0
+        returns_imported = 0  # v8.18.23: posted 'Si' return documents
         skipped_duplicates = skipped_duplicates_pre
         payments_imported = 0
         sales_by_date = {}
@@ -579,8 +597,11 @@ def import_pos_backup(zip_path: str) -> dict:
                 # No INVOICE header — skip (can't determine total reliably)
                 continue
             recs = transactions.get(unqcode, [])
-            si_recs = [r for r in recs if r.get("TYPE") == "SI"]
-            sp_recs = [r for r in recs if r.get("TYPE") == "SP"]
+            # v8.18.23: 'Si' docs post their ledger entries as TYPE='Si'
+            # (mixed case) — collect them alongside 'SI' for the fallback
+            # line path so return docs without INVTRANS lines still work.
+            si_recs = [r for r in recs if str(r.get("TYPE", "") or "").upper() == "SI"]
+            sp_recs = [r for r in recs if str(r.get("TYPE", "") or "").upper() == "SP"]
 
             # Re-check dedup inside the transaction (race-safe)
             with conn() as c:
@@ -606,7 +627,14 @@ def import_pos_backup(zip_path: str) -> dict:
             #
             # AUTHORITATIVE source for sale total = INVOICE.DBF.AMOUNT (one row per sale).
             # INVTRANS.DBF line items should sum to the same total (used as a sanity check).
+            # v8.18.23: 'Si' return documents post NEGATIVE in the POS ledger
+            # (verified against ACCTRANS: 'Si' entries carry negative amounts
+            # while 'SI' carries positive) — the sale imports with a negative
+            # total so revenue, COGS and stock all flow back correctly.
+            is_return_doc = bool(inv.get("is_return_doc"))
             total_amount = inv.get("amount", 0)
+            if is_return_doc:
+                total_amount = -total_amount
 
             # ── Determine payment method (from SP records) ──────────────
             # Use only the non-CREDIT SP record (the "money received" side)
@@ -620,7 +648,11 @@ def import_pos_backup(zip_path: str) -> dict:
             #   - PAID == AMOUNT → fully paid (cash sale)
             #   - PAID < AMOUNT  → credit sale (customer owes the balance)
             #   - PAID == 0      → pure credit sale (nothing paid yet)
-            is_credit = (inv.get("paid", 0) < inv.get("amount", 0)) and inv.get("amount", 0) > 0
+            # v8.18.23: return docs are money flowing BACK to the customer —
+            # always 'paid' (a negative-total credit sale is not a thing the
+            # rest of the system knows how to represent).
+            is_credit = (not is_return_doc) and \
+                (inv.get("paid", 0) < inv.get("amount", 0)) and inv.get("amount", 0) > 0
 
             # ── Resolve customer from DEBTORS.DBF via INVOICE.CLIENT ───────
             # v8.5.1: use INVOICE.CLIENT (the customer on the sale) instead of
@@ -661,7 +693,7 @@ def import_pos_backup(zip_path: str) -> dict:
                     "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (invoice_no, customer_name, customer_phone, customer_id,
                      round(total_amount, 2), round(total_amount, 2), 0,
-                     0, round(inv.get("tax", 0) or 0, 2),
+                     0, round((-inv.get("tax", 0) if is_return_doc else inv.get("tax", 0)) or 0, 2),  # v8.18.23: tax reverses on returns
                      payment_method, "credit" if is_credit else "paid", 1,
                      created_at_str, client_uuid),
                 ).lastrowid
@@ -678,6 +710,12 @@ def import_pos_backup(zip_path: str) -> dict:
                         item_name = ln["details"] or "Imported POS Item"
                         qty = ln["qty"] if ln["qty"] else 1
                         line_total = ln["amount"]
+                        # v8.18.23: return-doc lines are stored with positive
+                        # magnitudes in the POS (the doc type carries the
+                        # sign) — negate so qty/line_total/stock flow back.
+                        if ln.get("is_return_doc") or is_return_doc:
+                            qty = -qty
+                            line_total = -line_total
                         # Use INVTRANS.COST as the real per-unit cost at sale time
                         # This is the COGS — no need for peek_avg_cost fallback
                         cost_price = ln["cost"]
@@ -691,8 +729,16 @@ def import_pos_backup(zip_path: str) -> dict:
                             )
                         # Item code: use part_no from INVTRANS or from master
                         item_code = ln["part_no"] or master_entry.get("part_no", "")
-                        # Sell price: per-unit, derived from amount / qty
-                        sell_price = line_total / qty if qty > 0 else line_total
+                        # Sell price: per-unit, derived from amount / qty.
+                        # v8.18.23 FIX: divide for ANY non-zero qty. The old
+                        # `if qty > 0 else line_total` stored the whole LINE
+                        # TOTAL as the unit price on every return line
+                        # (qty<0) — e.g. qty=-7, amount=-1750 stored
+                        # sell_price=-1750 instead of +250, so every
+                        # sell_price*qty metric double-negated the return
+                        # into a POSITIVE sale (inflated margins' Total Sales
+                        # by Rs 15,540 on the reporting client's DB).
+                        sell_price = line_total / qty if qty != 0 else line_total
                         if category_id is None:
                             unknown_cost_items += 1
 
@@ -754,6 +800,10 @@ def import_pos_backup(zip_path: str) -> dict:
                                     pass
                         if line_total == 0:
                             line_total = price * qty
+                        # v8.18.23: return docs — negate qty so stock flows
+                        # back (ACCTRANS 'Si' amounts are already negative).
+                        if is_return_doc:
+                            qty = -qty
 
                         item_code = ""
                         for key in ("CATCODE", "CODE", "ITEM_CODE", "ICODE"):
@@ -794,6 +844,8 @@ def import_pos_backup(zip_path: str) -> dict:
 
                 # ── If no line items at all but we have SP → synthetic summary item
                 if not sale_items_inserted and sp_recs:
+                    # v8.18.23: return docs get qty=-1 so stock flows back
+                    _synth_qty = -1 if is_return_doc else 1
                     # Try to match the DETAILS text (e.g. "C - Cash Sales" → category 'C')
                     details = sp_recs[0].get("DETAILS", "") or ""
                     cat_code_hint = ""
@@ -815,17 +867,19 @@ def import_pos_backup(zip_path: str) -> dict:
                         "category_code, cost_price, sell_price, qty, line_total) "
                         "VALUES(?,?,?,?,?,?,?,?)",
                         (sale_id, "Imported POS Sale", category_id, cat_code_hint,
-                         round(cost_price, 2), round(total_amount, 2), 1,
+                         round(cost_price, 2), round(total_amount, 2), _synth_qty,
                          round(total_amount, 2)),
                     )
                     sale_items_inserted.append({
-                        "category_id": category_id, "qty": 1,
+                        "category_id": category_id, "qty": _synth_qty,
                         "item_name": "Imported POS Sale",
                     })
-                    total_cogs += cost_price
+                    total_cogs += cost_price * _synth_qty
 
                 # ── Insert cash_drawer entry (cash sales only) ──────────
                 # CRITICAL: use the ORIGINAL sale timestamp, not datetime('now')
+                # v8.18.23: return docs record the refunded cash as a NEGATIVE
+                # sale entry (money left the drawer).
                 if payment_method == "cash" and not is_credit:
                     c.execute(
                         "INSERT INTO cash_drawer(type, amount, description, "
@@ -905,6 +959,8 @@ def import_pos_backup(zip_path: str) -> dict:
                         )
 
             sales_imported += 1
+            if is_return_doc:
+                returns_imported += 1  # v8.18.23: track return docs separately
             payments_imported += 1 if sp_recs else 0
             sales_by_date[txn_date_str] = sales_by_date.get(txn_date_str, 0) + total_amount
 
@@ -1100,20 +1156,23 @@ def import_pos_backup(zip_path: str) -> dict:
         # ── Log the import ────────────────────────────────────────────────
         log_activity(
             "pos_backup_imported", "pos_import", run_id,
-            f"Imported POS backup {backup_filename}: {sales_imported} sales, "
-            f"{expenses_imported} new expenses, {expenses_updated} updated, "
+            f"Imported POS backup {backup_filename}: {sales_imported} sales"
+            + (f" (incl. {returns_imported} return doc(s))" if returns_imported else "")
+            + f", {expenses_imported} new expenses, {expenses_updated} updated, "
             f"{skipped_duplicates} duplicates skipped",
             {"backup_file": backup_filename, "backup_date": backup_date,
              "sales_imported": sales_imported, "expenses_imported": expenses_imported,
              "expenses_updated": expenses_updated,
              "skipped": skipped_duplicates, "shop_name": shop_name,
              "total_sales_amount": total_sales_amount, "import_run_id": run_id,
-             "bags_stock_synced": bags_stock_synced},
+             "bags_stock_synced": bags_stock_synced,
+             "returns_imported": returns_imported},  # v8.18.23
         )
 
         return {
             "import_run_id": run_id,
             "imported_sales": sales_imported,
+            "imported_returns": returns_imported,  # v8.18.23
             "imported_payments": payments_imported,
             "imported_expenses": expenses_imported,
             "updated_expenses": expenses_updated,  # v8.16.8
